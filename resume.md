@@ -6,7 +6,25 @@
 
 ## Where we are
 
-Pre-build / planning. ARES (formerly "Prahari") just cut into its **own repo** (`amateur-ai-dev/ares`), no longer nested under Second-brain-.
+Pre-build / planning. ARES (formerly "Prahari") in its **own repo** (`amateur-ai-dev/ares`). Wayfinder map charted — destination = a **GO/NO-GO decision** on building ARES as a real internal SOC tool (goal: must genuinely get used; no target org yet).
+
+## Wayfinder map (GitHub issues, this repo)
+
+- Map: #1 "ARES go/no-go: build it as a real SOC tool?" (`wayfinder:map`)
+- **Research DONE + resolved:** #2 model triage quality, #3 competitive landscape, #4 on-prem driver. Notes in `docs/research/`.
+- **Frontier (takeable now):** #5 prototype proof (unblocked, reshaped), #6 effort vs payoff (grilling), #7 path-to-first-user (grilling), #9 differentiation wedge (grilling, graduated from #3)
+- **Blocked:** #8 GO/NO-GO decision (needs #5,#6,#7,#9)
+
+### Research verdicts (all point to conditional GO)
+
+- **#2 model:** MARGINAL — local SLM viable ONLY inside retrieval+orchestration pipeline as HITL decision-support (raw ≈0% TP → wrapped ~93%). Best: Foundation-Sec-8B default, CyberSecQwen-4B low-VRAM. Architecture > model.
+- **#3 competition:** "private" not unfilled (Elastic + AI_SOC already there). Wedge must be: turnkey single-org + stack-agnostic + code-scan-first.
+- **#4 privacy pull:** moderate-strong but segment-gated. Lead with mandated/IP-sensitive SOCs (defense, HIPAA/PCI, EU DORA/NIS2), not mainstream.
+
+### Implications carried forward
+
+- Prototype #5 must test the PIPELINE (RAG + planner/adjudicator), not raw model.
+- MASTER_PLAN framing shifts: HITL decision-support (not autonomous); pitch off "private" onto turnkey+stack-agnostic+code-scan; target mandated segments.
 
 ## Done
 
