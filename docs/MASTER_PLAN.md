@@ -1,22 +1,87 @@
-# Prahari — Master Plan
+# ARES — Master Plan
 
-> **Prahari** (प्रहरी, Sanskrit: *sentinel / guard*) — a locally-hosted, domain-specific security-operations assistant. Working name; rename freely.
+> **ARES** — a locally-hosted, domain-specific security-operations assistant. **Name settled (revision 7): keep ARES.** No rename, no backronym required — see §14.
 >
 > **Status:** DRAFT — awaiting owner approval. No implementation code will be written until this plan is approved.
-> **Owner:** Nithin · **Author:** engineering session · **Last updated:** 2026-07-21
+> **Owner:** Nithin · **Author:** `planner` (Fable 5), revision 7 · **Last updated:** 2026-07-29
+>
+> **Revision 7 folds in:** Nithin's own answers to §14's three remaining open questions (given 2026-07-29) — this closes the last pre-approval fog, not a findings-driven revision like 4/5/6. **Q1 (name) closed: keep ARES**, no backronym invented. **Q2 (models) closed: §5's existing two-model split is confirmed as written** — Foundation-Sec-8B (SecOps/RCA default), Qwen2.5-Coder-7B (code-review add-on only), CyberSecQwen-4B (low-RAM SecOps fallback only) — with one operational consequence made explicit that §5 previously only implied: Foundation-Sec-8B and Qwen2.5-Coder-7B together (~10.5GB) exceed the ~10GB usable M4 budget, so they load **strictly sequentially**, never concurrently, and a same-session Phase 1→Phase 3 demo needs a scripted unload/load pause. **Q3 (frontend) closed, and scope increases:** §8 Phase 2 becomes **required, not optional** — a full dashboard plus report export in three formats (Markdown, HTML, Excel) from one structured report model, adding `openpyxl` as the only new dependency this revision introduces (§4). This is additional unpriced scope, flagged honestly, not folded into a new effort total, and gated to start only after Phase 1's Done criterion is met and scored (§8). §7.5 Decisions A and B remain **CONFIRMED and unreopened**. With §14's questions closed, **no open questions remain in the plan** — see §15 — but revision 7's own diff has not yet had an adversarial pass, and the document is still not marked approved.
+
+---
+
+## 0.5. Conditionality — read this before anything else
+
+**This document describes an MVP whose sole job is to prove feasibility. It is NOT a production build plan.** That is the single biggest change from revision 1, and it rewrites everything downstream of it: scope, the wedge, the phased delivery, the effort estimate, and what counts as "done."
+
+**Revision history, briefly:** revision 1 drafted a production-shaped plan (HITL alert triage + code-scan pillar, ~14–21 solo-dev days). A Codex adversarial review returned **needs-attention / no-ship**, and a live grilling session with Nithin then made three binding corrections that this revision folds in wholesale:
+
+1. This is an **MVP for a hackathon-scale feasibility proof**, not a production tool. Production is a *later* effort, not this one.
+2. The **shape was wrong** — revision 1 drifted into treating code-scanning as the product. It is not. The core is **RAG + alert triage doing log analysis and root-cause analysis (RCA)** — reconstructing what happened, in what order, and why. Code-scanning tools are a verification layer *inside* that loop; code review of AI-generated automation is a **separate add-on feature**, not the product.
+3. The **wedge changed**: not "turnkey + stack-agnostic + code-scan-first" (revision 1's wedge, which Codex correctly identified as an unvalidated inference from a feature survey) — the wedge is now **the verification layer**: the model proposes, deterministic tools dispose, and every model claim is badged verified / refuted / unverifiable. See §2.
+
+**Revision 2 → 3, briefly.** Revision 2 went through a Codex adversarial review that conceded the MVP rescope (it legitimately retired the production-readiness objections and the circular GO gate — those stay settled, not reopened) but raised four findings. This revision resolves all four:
+
+1. **(High) The wedge did not verify causality.** Codex was right: a Hayabusa timeline establishes observed *order*, not causation, and a Sigma match confirms a rule predicate fired, not that one event enabled another. Fixed by two owner decisions — the **relational-evidence rule** and the **escalation-and-learning loop** — detailed in §2.1, with the full causal-gap ("Aporia") design in §3 and §6, and a non-negotiable **badge firewall** preventing the learning loop from becoming circular. This is the single biggest change in this revision; it gets prominence throughout.
+2. **(Medium) Phase 1 had no defined pass/fail bar** — "scored" was not a threshold. Fixed: §7.5 Decision A sets the bar (zero false-verified on a held-out incident + a coverage target), and §8 Phase 1's Done criterion now states it as a number, not an activity.
+3. **(Medium) The evaluation controls feasibility itself depends on were deferred to production**, when they're actually load-bearing at MVP scope. Fixed: a lightweight evaluation protocol (frozen dev + frozen held-out incident, pre-registered thresholds, baseline comparisons, no tuning against the held-out key) is now **in MVP scope**, folded into §8 Phase 1's Done criterion. §9 no longer classifies these particular controls as deferred — only their statistically-powered, multi-incident, production-grade successors remain deferred.
+4. **(Low, not prioritised by the owner) The effort estimate.** Kept as-is, explicitly re-flagged rather than replaced with a new invented number — see the note at the end of §8.
+
+**Revision 3 → 4, briefly.** Revision 3 went through a third Codex adversarial review (verdict: needs-attention / no-ship, 4 findings). At the time this was believed to be the third and final planned round; **a fourth round did in fact run against this revision (see "Revision 4 → 5" below) — that expectation did not hold, and this document no longer states a hard cap on adversarial rounds.** Claude/Opus accepted all four findings without defense; all four are resolved in this revision:
+
+1. **(High) Predicates prove narrower relations, not causal edges.** Codex was right: a shared `LogonId` joins many unrelated actions in one session; process-bound network telemetry says which process opened a connection, not that it caused another event; write-then-execute doesn't prove which write supplied the executed bytes; parent/child proves spawning, not that the parent "enabled" whatever the child later did. Fixed: §2.1 replaces the single generic "causal edge VERIFIED" badge with four **relation-specific predicate contracts** (`SPAWNED`, `SAME_SESSION`, `WROTE_PATH_BEFORE_EXECUTION`, `PROCESS_OPENED_CONNECTION`), each badged as exactly what it proves, with an explicit statement of what it does **not** prove, and each validated against labeled positive **and** confounded-negative Sysmon fixtures. A higher-level causal claim assembled from one or more predicates is **unverifiable by default** (an Aporia) unless a composition rule for that specific pattern is separately defined — none is defined at MVP scope. The worked example that made the semantic leap ("process A spawning process B enabled the credential dump") is corrected.
+2. **(High) No causal-edge ground truth exists in the chosen datasets.** OTRF is ATT&CK-technique-mapped, not causal-chain-annotated; "zero false-verified" and "% of edges verified" are literally not computable without a causal answer key, and adjudicating after seeing ARES's output would destroy the held-out control. Fixed: a new required work item — **author and freeze an edge-level causal ground-truth artifact**, by Nithin, from the raw logs, before ARES is ever run on either the frozen dev or frozen held-out incident (§8, new Phase 1a; artifact spec in §6). ATT&CK technique recall stays a separate metric, scored against OTRF's own labels — never merged with the edge-level metrics.
+3. **(High) Coverage was circular and gameable.** With no fixed denominator, and the pipeline only ever materializing edges it proposes, a model could hit "100% coverage" by only proposing easy parent/child links — and the precedents-disabled/enabled comparison compared different candidate sets, not a controlled variable. Fixed: §8 Phase 1's Done criterion now scores against the frozen edge graph from finding 2 and reports three separate metrics — **proposal recall**, **verification precision** (where zero-false-verified lives), and **verified-edge recall** (where Decision A's 50–60% coverage target now attaches). The precedents-disabled/enabled experiment reports newly-proposed-correct / newly-proposed-incorrect / verified / unresolved counts against the same frozen edge graph in both modes, not one coverage percentage.
+4. **(Medium) The badge firewall was policy text, not a structural boundary.** The claims schema stored only a generic `evidence_ref`, with nothing preventing a `knowledge_item` reference from backing a VERIFIED badge. Fixed: §6 adds an immutable `verifier_executions` table (incident id, predicate id + version, the input event ids and actual field values compared, result, current-log provenance) and makes a badge assignable **only** via a successful `verifier_execution` row from the same incident, enforced by a single badge-assignment function (chosen over a DB constraint as cheaper at MVP scale — see §6). Predicate versioning, previously deferred, is now un-deferred to the extent this structural boundary needs it. **⚠️ Corrected in revision 5:** the "function-only is cheaper than a DB constraint" rationale above did not survive Codex round-4 finding 4 — a same-`incident_id`-plus-`result=true` check is not enough to stop a badge citing the wrong claim/edge, and function-only enforcement means any direct SQL write bypasses the firewall entirely. Revision 5 adds a SQLite trigger alongside the function and narrows the equality check considerably — see §3 and §6 as they now stand, not this historical rationale.
+
+**Revision 4 → 5, briefly.** Revision 4 went through a fourth Codex adversarial review (verdict: needs-attention, 4 high findings). Claude/Opus independently re-verified the Sysmon field claims behind finding 1 against the actual Sysmon event schema and confirmed Codex was correct. Findings 1, 3, and 4 are accepted in full; finding 2 is accepted in part and defended in part:
+
+1. **(High, accepted in full) Predicate contracts didn't match real Sysmon semantics.** `SAME_SESSION` as written was unimplementable: Event IDs 3 (NetworkConnect) and 11 (FileCreate) do not carry `LogonId` — only Event ID 1 (ProcessCreate) does. Fixed: §2.1 now derives session membership indirectly — for a non-EID-1 event, join via its `ProcessGuid` to that process's own EID 1 record and read `LogonId` there; if the EID 1 record is absent from the capture, the predicate cannot be evaluated and the claim is an Aporia, never a badge. `WROTE_PATH_BEFORE_EXECUTION` now names the correct field per event type: Event ID 7 (ImageLoad) compares `ImageLoaded` (the module), not `Image` (the hosting process); Event ID 1 still compares `Image`. Every predicate join is now explicitly **host-scoped** — `Computer` is added to every join condition *(field name later corrected to `Hostname` in revision 6, once measured against the real corpus — see §0.5's "Revision 5 → 6" entry and §2.1 as they now stand)*, since `LogonId` is local to a host and gets reused after reboot, and identical file paths exist on every host; `SAME_SESSION`'s reboot/LogonId-reuse hazard is stated, and MVP scope is explicitly narrowed to a single host and a single capture window. Six mandatory confounded-negative fixtures are now named: cross-host same-`LogonId`, cross-host same-path, reboot `LogonId` reuse, intervening overwrite of the written path between write and execute, symlink/junction indirection, and Event-7 `Image`-vs-`ImageLoaded` confusion — a predicate does not ship until all six pass *(revision 6 adds a seventh, well-known-session fixture, and marks the cross-host same-path fixture synthetic — see §2.1)*.
+2. **(High, split) The Phase 1a artifact spec and the held-out control.** **2(a) accepted:** the artifact spec was underspecified enough that two honest authors could produce different denominators and verdicts — §6 now pins down the edge universe and inclusion/exclusion rules, event identity/granularity and an equivalence grammar, the observable-edge denominator (matching §6's existing unobservable-edge rule, word-for-word, in §8 too), explicit negative/confounder edge representation, and a deterministic prediction-to-key matching algorithm including deduplication. **2(b) accepted:** §6's artifact spec previously allowed a labeled composite edge with its own composition, contradicting §2.1's rule that no composition exists at MVP scope — resolved in favour of §2.1: composite edges are recorded in the ground-truth artifact only as **unscored annotations**, never as scoreable key entries. **2(c) defended, not adopted:** Codex recommended an independent human adjudicator seal the held-out key; there is no second human on a solo hackathon build, so that control literally does not exist. Instead of pretending otherwise, the document now renames the second incident throughout from "held-out"/"never inspected" to a **frozen, single-shot-scored incident**, records the actually-achievable discipline (author its ground-truth key first, freeze predicates/prompts against the dev incident only, then score the frozen incident once with no tuning afterward, report the score whatever it is), and states the **residual bias — the builder has read the frozen incident's logs, so this is not a blind evaluation — as a permanent, must-carry disclosure** (§7.5, §8, §9). Production must still reinstate a genuinely independent adjudicator, a sealed key inaccessible to the builder, and a one-shot scoring script.
+3. **(High, accepted in full) The three metrics and the four-count comparison were still gameable.** Verification precision is now defined as **FAIL, not undefined, when zero edges are badged** — recorded alongside the partial defense that abstention was never fully free, since Decision A's 50–60% verified-edge recall floor already fails a pipeline that badges nothing. The denominator contradiction between "frozen true edges" (§8) and "unobservable edges never penalize" (§6) is resolved: the denominator is the **observable true-edge set**, worded identically in both sections. Predicate-badge correctness (relation truth) is now scored as a **distinct quantity** from causal-narrative correctness — a `SAME_SESSION` badge being right is never counted as the causal story being right. The precedents-disabled/enabled comparison is now specified as **paired deterministic trials** (fixed seed, fixed temperature, identical model version/inputs/settings, precedent channel the only variable), "newly proposed" defined as an edge-level set difference between the paired runs, explicit statement of whether verified/unresolved counts are totals or deltas, per-mode TP/FP/verified/unresolved plus the paired transitions, and deduplication per finding 2(a)'s matching algorithm.
+4. **(High, accepted in full, strongest catch of the round) A successful `verifier_execution` row could badge the wrong claim.** The binding checked only `result = true` and matching `incident_id` — enough for one legitimate `SPAWNED` execution to get referenced by a *different* same-incident claim (a different edge, even a different predicate) to earn a verified badge. Fixed: badge assignment now atomically requires matching `incident_id`, `verifier_executions.predicate_id` equal to `claims.predicate_type`, `predicate_version` recorded, `input_event_ids` exactly equal (as an ordered pair) to that claim's own source/target events, current-log provenance present, and `result = true`. Each execution is bound to its canonical claim/edge **at creation**, not only at badge time. Enforcement is now **trigger + function**, not function-only: a SQLite BEFORE UPDATE/INSERT trigger on `claims` rejects any verified-predicate write failing the checks above, alongside the existing badge-assignment function — this corrects, not just supplements, revision 4's "function-only is cheaper" rationale (see the ⚠️ note on finding 4 above), because a trigger costs a few lines and function-only enforcement leaves any direct SQL write or incidental writer able to bypass the firewall entirely. `knowledge_item`s still have no path to a verified badge: `hypothesis_precedent_ref` remains unreadable by the badge path, and the trigger's predicate/event-id equality checks close the reuse loophole structurally, not by convention.
+
+**No new ARES performance number is introduced by this revision; the deleted ~93% figure stays deleted.** No new effort total is invented — finding 1's mandatory confounded-negative fixtures and finding 2(a)'s deterministic matching algorithm are recorded as additional Phase 0/1a work, not priced into a new total (§8). Revision 5 does not reopen §7.5 Decisions A or B, and does not reintroduce any production-scope item (auth, hardening, compliance, multi-tenancy, effort padding) that earlier rounds already conceded out of MVP scope.
+
+**Revision 5 → 6, briefly — a different kind of input than revisions 2 through 5.** Every prior revision folded in the verdict of a Codex adversarial review — prose challenged by another reader. Revision 6 folds in something categorically different: **empirical findings from actually running code against the real dataset**, measured live on 2026-07-29 by downloading and parsing the actual OTRF APT29 evaluation data. **This is worth naming as a lesson, not just a changelog entry: four adversarial rounds over the prose missed two real problems below (E3, E4) that ten minutes of measurement against real logs found immediately.** Adversarial review is good at catching overclaims, missing controls, and structural gaps in reasoning stated in prose — it is not a substitute for running the thing against the data it will actually see. That is where this plan's remaining risk now lives: not in the argument, which has been through five rounds of scrutiny, but in whatever this document still asserts about the corpus without having measured it. The fixes below are corrections to specific, narrow claims — they do not reopen §7.5 Decisions A or B, and they introduce no new ARES performance number (only measured properties of the *dataset*, explicitly labeled as such, never mistaken for a result).
+
+1. **(Gate passed) The dataset gate is PASSED, and Decision B is now concrete.** Verified live: the frozen dev incident is OTRF's `datasets/compound/apt29/day1/apt29_evals_day1_manual.zip` → `apt29_evals_day1_manual_2020-05-01225525.json` (196,081 total events; 143,884 from `Microsoft-Windows-Sysmon/Operational`; Sysmon EID 1 = 447, EID 3 = 1,229, EID 7 = 20,259, EID 11 = 1,649; four hosts, `SCRANTON`/`NASHUA`/`NEWYORK`/`UTICA`, all `.dmevals.local`). The frozen, single-shot-scored incident is `datasets/compound/apt29/day2/apt29_evals_day2_manual.zip` → `apt29_evals_day2_manual_2020-05-02035409.json` (587,286 total events; Sysmon EID 1 = 581, EID 3 = 2,186, EID 7 = 32,012, EID 11 = 5,479; same four hosts). Both are MITRE ATT&CK Evaluations Round 2 (APT29 emulation); the emulation plan ships in the repo at `datasets/compound/apt29/emulationplans/apt29.xlsx` and is recorded as the per-step ATT&CK reference for the separate ATT&CK-recall metric — **not** as a causal-edge key. The data is fetched at Phase 0 time, lives outside the repo (or gitignored) and is never committed — ~13MB zipped, ~367MB extracted for day1 alone. **The Sysmon hard constraint from earlier revisions (§7.5) is now satisfied and verified, not assumed.** Every `<incident_id>`/`<dev_incident_id>` placeholder in §3/§6/§8 is replaced with these real identifiers.
+2. **(Correction) Field name correction — measured.** The dataset's host field is **`Hostname`** (e.g. `SCRANTON.dmevals.local`), **not** `Computer`. Revision 5 host-scoped every predicate join to `Computer`. Every occurrence in §2.1 (and elsewhere) is corrected to `Hostname`. `Computer` remains the correct field name for raw Windows EVTX; this OTRF corpus normalizes it to `Hostname` — the parser must map whichever field name it actually sees in a given source. The host-scoping requirement itself is unchanged; only the field name is.
+3. **(High, new — no adversarial round caught this) `SAME_SESSION` is near-vacuous on well-known `LogonId`s.** Measured on the dev incident: of 19 distinct `LogonId`s appearing on Sysmon EID 1 records, 2 — `0x3e7` (SYSTEM) and `0x3e4` (NETWORK SERVICE) — appear on **all four hosts**. These are Windows' well-known logon sessions (`0x3e5`, LOCAL SERVICE, is the third of the family), not user sessions; within a single host they join thousands of mutually unrelated events. A `SAME_SESSION` badge citing one of them would prove essentially nothing while still counting as a verified badge — silently inflating verified-edge recall with meaningless matches. **Fixed:** §2.1's `SAME_SESSION` contract now excludes `0x3e7`/`0x3e4`/`0x3e5` from the predicate entirely; a pair whose only shared session is one of these resolves to an Aporia with a new `verification_failure_code` of `well_known_session` (§6), never a badge. Recorded in §9 as a measured limitation of session-based reasoning generally.
+4. **(High, new) The `ProcessGuid`→EID 1 session join fails most of the time on network events — a measured, not a defect, coverage ceiling.** Measured resolution rates on the dev incident: EID 3 (NetworkConnect) 467/1,229 = **37%** resolvable; EID 11 (FileCreate) 1,275/1,649 = **77%**; EID 7 (ImageLoad) 19,374/20,259 = **95%**. Cause: only 447 EID 1 records exist against 1,229 network events, so most processes that opened a connection have no captured startup record in the window. Also measured: of 446 EID 1 records carrying a `ParentProcessGuid`, 327 resolve to a captured parent and 119 (27%) are orphans, so `SPAWNED` has its own ceiling. `WROTE_PATH_BEFORE_EXECUTION` yields only 34 same-host write→execute/load pairs in the dev incident — small but non-zero. These numbers are recorded in §8 Phase 1 as the **baseline expectation** so a mediocre result is not mistaken for a broken pipeline, and in §7.5 Decision A as context for the 50–60% verified-edge-recall target — the target itself is **unchanged**, but the response if Phase 1 lands below it, per Decision A, is still to implement more predicate types, never to loosen the evidence rule or start counting well-known-session matches.
+5. **(Medium, new) One mandatory fixture cannot be drawn from this corpus.** The dev incident contains zero cross-host same-path cases, so revision 5's mandatory "cross-host same-path" confounded-negative fixture (§2.1, fixture 2) cannot be sourced from real data. Marked **synthetic — hand-constructed** in §2.1; synthetic fixtures are legitimate for testing a predicate's guard logic but must be labeled as such and never counted in any coverage or recall metric. (Fixture 1, cross-host same-`LogonId`, is now sourceable from real data — the well-known-session events in finding 3 above happen to double as that fixture's real-world positive case for the well-known-session guard.)
+
+**Revision 6 → 7, briefly — small and administrative, not findings-driven.** Revisions 2 through 6 each folded in an external input — a Codex adversarial round's verdict, or live measurement against real data. Revision 7 folds in something smaller: **Nithin's own answers to §14's three remaining open questions**, given 2026-07-29, closing the last pre-approval gate. Nothing here reopens §7.5 Decisions A or B, and nothing here is a findings-driven correction to prior reasoning — it is Nithin exercising the decisions §14 explicitly left to him.
+
+1. **Q1 — project name: CLOSED.** Keep **ARES**. No rename, no backronym invented or required. §14's Q1 is marked resolved, not deferred, and is removed from the open-questions list.
+2. **Q2 — models: CLOSED, and the question itself was mis-framed.** §5's two-model split (Foundation-Sec-8B for SecOps/RCA, Qwen2.5-Coder-7B for the code-review add-on) is what Nithin intended all along. The way the question had been put to him — "Foundation-Sec-8B vs. CyberSecQwen-4B" as if it were a single either/or choice — was the wrong framing: CyberSecQwen-4B is a low-RAM **fallback for the SecOps slot only**, not a competing pick, and the code-review model was never in contention. §5 is confirmed as already written, with no substantive change to the model table. **One operational consequence made explicit for the first time (revision 7):** Foundation-Sec-8B (~5–6GB) and Qwen2.5-Coder-7B (~4.5GB) together are ~10.5GB against the ~10GB usable budget on a 16GB M4 — **they cannot both be resident simultaneously.** Loading is strictly sequential: the SecOps model unloads before the coder model loads, and vice versa. There is **no live model switching mid-demo** without a visible unload/load pause — if Phase 3's code-review add-on is demoed in the same session as Phase 1's RCA demo, that pause must be **scripted into the demo flow**, not discovered on stage. The CyberSecQwen-4B fallback profile (~2.5–3GB + 4.5GB ≈ 7.5GB) would fit both concurrently — a second, previously unstated reason the fallback profile might one day be chosen — but this does **not** change the default; Foundation-Sec-8B stays the default per §5.
+3. **Q3 — frontend: CLOSED, and scope INCREASES.** Nithin's answer: a full UI with a **dashboard**, plus **report export in three formats — Markdown (.md), HTML, and Excel (.xlsx)** — from the same underlying report model. This materially changes §8 Phase 2 from "optional, stretch, could be as bare as legible CLI output" to **required, not optional**. The dashboard shows the reconstructed incident timeline, each claim's badge (§2.1's relation-predicate names) or Aporia status, causal gaps surfaced as first-class items rather than buried, and Phase 1's metrics (proposal recall, verification precision, verified-edge recall) as run results. Report export is designed as **one structured report object rendered three ways**, not three independent exporters with divergent content; Markdown and HTML need no new dependency (Jinja2, already in §4's stack), and Excel requires exactly **one new dependency, `openpyxl`** — recorded in §4 as newly added, the only new dependency this revision introduces. **Cost recorded honestly, not silently absorbed:** this scope increase adds days to §8's existing ~4–9 day figure and proves nothing additional about *feasibility* — the thesis is the verification layer (§2), not presentation. Nithin's rationale is hackathon-specific and legitimate (judges score what they can see; a downloadable report is a strong close), but per the standing rule this document does **not** invent a new effort total — Phase 2's enlarged scope is additional unpriced work, alongside Phase 1a's owner-authoring hours and revision 6's fixture work (§8). **A hard sequencing guard is added to §8:** Phase 2 must not begin, and must not consume time, until Phase 1's Done criterion is met and scored — the dashboard presents a working feasibility result; if Phase 1 hasn't produced one, there is nothing to present and UI work is pure loss.
+
+No new ARES performance number is introduced by this revision; the deleted ~93% figure stays deleted. §7.5 Decisions A and B are not reopened. No production scope (auth, hardening, compliance, multi-tenancy, effort padding) is reintroduced.
+
+Two further decisions Nithin surfaced during the grilling — what counts as *feasible* and which incident the MVP runs on — are recorded in full, with every option, in §7.5, and are now **CONFIRMED by Nithin (2026-07-29)**. Both option sets and their 🔒 "production must reinstate" notes stay recorded in full even though decided — that record is what keeps the MVP's leniency legible for whenever a production track opens.
+
+**How this resolves Codex's circularity finding.** Revision 1 made the feasibility spike (ticket #5) a phase gated behind the project's own GO/NO-GO decision (#8) — but #8 needed #5 to close first. That was circular. **Under MVP framing this resolves by construction: the MVP *is* the feasibility spike.** Building §8 Phase 0–1 does not wait on #8; it is the evidence #8 (and #6, #7, #9) will be scored against. There is no gate to clear before building the MVP other than this document's own approval (§15). The larger question — "should ARES ever become a production tool" — is a separate, later decision, informed by what the MVP demonstrates, and is explicitly **out of scope here** (see §9, the new section this revision adds specifically to carry that boundary forward).
+
+**Wayfinder map status (GitHub issues #1–#9, `amateur-ai-dev/ares`):**
+- **#2/#3/#4 — research.** Done. Cited throughout, per the verified-facts constraints below.
+- **#9 — differentiation wedge.** **Resolved by Nithin's decision during the grilling session** (not a planner inference): the wedge is the verification layer (§2), replacing revision 1's turnkey/stack-agnostic/code-scan-first candidate.
+- **#5 — prototype proof.** No longer a separate frontier ticket gated behind GO/NO-GO — it closes when the MVP (§8 Phase 0–1) is built and run. This document describes what that build looks like; it is not yet built.
+- **#6 — effort vs. payoff.** Still open, but the stakes are now small: is roughly a week of solo-dev time worth it to get feasibility evidence? Score it against §8's revised, MVP-scaled effort estimate, not revision 1's 14–21 day figure (which no longer applies — that estimate priced a production build this document no longer proposes).
+- **#7 — path to first user.** Still open, and now genuinely lower-priority: an MVP built to prove feasibility for a hackathon-style audience does not need a first paying/using org. Revisit if the MVP succeeds and a production track opens.
+- **#8 — GO/NO-GO (production).** Still open, and now clearly downstream of the MVP rather than blocking it. Approving this document authorizes building the MVP (§8 Phase 0–1a–1, Phase 2 now required per revision 7's Q3 closure, plus the optional Phase 3 add-on); it does **not** authorize a production build. A production GO/NO-GO, if pursued, is a separate future master-plan revision that starts from §9's deferred list.
 
 ---
 
 ## 0. Read this first (why this doc exists)
 
-You are a **capable developer** but **new to security operations as a field**. You want to **learn sec-ops before we build**, because the tool is only as good as the builder's grasp of the domain (what "severity" really means, what good triage looks like, which vulnerability classes matter).
+You are a **capable developer** but **new to security operations as a field**. You want to **learn sec-ops before we build**, because the tool is only as good as the builder's grasp of the domain (what root-cause analysis actually looks like, what a defensible timeline needs, which claim types are worth checking).
 
 So this document is two things at once:
 
-1. A **plan** — what we build, in what order, with what tools. (Assumes you can code; choices are justified on *engineering merit*, not skill level.)
-2. A **sec-ops primer** — the domain knowledge you need loaded before building, in plain language. Sections tagged **📚 LEARN** teach the *field*; sections tagged **🔧 BUILD** are engineering decisions.
+1. A **plan** — what we build, in what order, with what tools, to produce one feasibility artifact. (Assumes you can code; choices are justified on *engineering merit*, not skill level.)
+2. A **sec-ops primer** — the domain knowledge you need loaded before building. Sections tagged **📚 LEARN** teach the *field*; sections tagged **🔧 BUILD** are engineering decisions.
 
-The heart of the "knowledge-first" ask is **§2A (sec-ops domain primer)** — read that closely. The tech-concept notes (§2B) are lighter, since the stack is your home turf.
+The heart of the "knowledge-first" ask is **§2B (sec-ops domain primer)**. The tech-concept notes (§2C) are lighter, since the stack is your home turf.
 
 Nothing here is code. Read it, push back, and approve (or amend) before we write a line.
 
@@ -24,278 +89,694 @@ Nothing here is code. Read it, push back, and approve (or amend) before we write
 
 ## 1. What we are building (plain English)
 
-A **local security-operations assistant** for a **single organization**, up to **3 users** (not simultaneous), running entirely on your **Apple M4, 16GB Mac** — no cloud, no data leaving the machine.
+**An MVP that proves one thing: a local small model, wrapped in a pipeline where every claim it makes is checked by a deterministic tool, can reconstruct what happened in a real attack — a timeline plus a causal chain, with evidence — accurately enough to be worth building further.** That is the whole feasibility question. Everything else in this document is in service of answering it cheaply and honestly.
 
-It does three jobs, built one at a time:
+It runs entirely on your **Apple M4, 16GB Mac** — no cloud, no data leaving the machine, and (important MVP simplification) **no target organization needed** — the MVP is evaluated against public labeled incident data (§8 Phase 1), not your own logs.
 
-1. **Threat-intel Q&A** — an analyst asks a security question ("what is CVE-2024-3094? are we exposed?") and the assistant answers using *your* documents (runbooks, policies, CVE notes), not the open internet.
-2. **Alert / log triage** — paste a SIEM alert or log snippet; the assistant explains what happened, rates severity, suggests next steps.
-3. **Code vulnerability scanning** — upload or paste code; the assistant flags likely vulnerabilities and explains them.
+### The core: RAG + alert triage doing log analysis and root-cause analysis (RCA)
 
-All three are driven by a **small language model (SLM)** running locally, plus a **web dashboard** to use it, behind a **login with roles**.
+This is the product. Not a true-positive/false-positive verdict — a **reconstruction**: what happened, in what order, and why, backed by evidence. Concretely, given a batch of logs/alerts from a labeled incident, ARES's pipeline should produce:
+
+- A **timeline** — ordered events with timestamps.
+- A **causal chain** — how each step plausibly led to the next (e.g. "phishing email → macro executed → LOLBin spawned → credential dump → lateral movement"), stated as a chain of claims.
+- Every claim in that chain **badged**: **verified** (a deterministic tool or the parsed log store confirms it), **refuted** (a deterministic tool or the log store contradicts it), or **unverifiable** (no deterministic check exists for that claim type at MVP scope — this badge must be shown, not hidden).
+- **Causal links get a stricter rule than the other claim types, and a narrower badge.** No link in the chain is badged a generic "verified causation." Each link is badged, at most, one of four narrow, relation-specific predicates — `SPAWNED`, `SAME_SESSION`, `WROTE_PATH_BEFORE_EXECUTION`, `PROCESS_OPENED_CONNECTION` — each proving exactly what its name says and nothing more (full contracts, §2.1). Chaining predicates into the bigger causal story ("A caused B") requires a **composition rule**, and none exists at MVP scope — so the higher-level causal claim is always an **Aporia** (`causal_gap` in the schema), never a badge, however many of its component predicates matched. An Aporia is not a dead end: it's a persistent record, escalated to a human via a ticket, feeding a learning loop that helps resolve similar links in future incidents. Full design in §2.1/§3/§6.
+
+### The wedge: verification, not accuracy (see §2 for the full case)
+
+A weak local model is an acceptable *hypothesis generator* and an untrustworthy *oracle*. ARES does not try to make the model more accurate — it wraps an untrustworthy generator in a pipeline that converts its output into something trustworthy, by checking every claim against something deterministic before it reaches a human. This is the answer to "why would a 4–8B local model be good enough" — it isn't, alone; the tool layer is what earns trust.
+
+### Additional verification layer (not the product): code-scanning tools
+
+Semgrep and tools of that kind run **inside the RCA loop** as one more deterministic check — e.g. confirming a claimed vulnerability class exists in a referenced code path. They are demoted throughout this document from "pillar" (revision 1) to "one verification tool among several."
+
+### Separate add-on feature: code review for vibe-coded automations
+
+A genuinely distinct feature, not part of the RCA core: reviewing **AI-generated glue scripts, n8n flows, agent tooling, and similar internal automation that nobody security-reviews** ("vibe-coded" automation). This uses a different, security-specific toolchain (semgrep, gitleaks, osv-scanner — §3/§4) and is scoped as an optional add-on slice (§8 Phase 3), not required for the MVP's Done criterion.
 
 ### What it is NOT (scope guardrails)
-- ❌ Not a multi-tenant SaaS serving many client companies. (Single org only. Multi-tenant is a *later* rewrite, noted in §11.)
-- ❌ Not a real-time SIEM / not ingesting live network traffic. It analyzes what you give it.
-- ❌ Not a fine-tuned/custom-trained model (you don't have the ML skill yet — we use RAG instead, explained below).
-- ❌ Not high-concurrency. 16GB RAM + one model = a few sequential users.
+
+- ❌ **Not a production tool.** Auth, RBAC, hardening, compliance, packaging, and long-term data management are explicitly deferred — see §9, the permanent record of what MVP scope excludes.
+- ❌ **Not autonomous.** The model never issues a final verdict — it proposes claims; the tool layer badges them; a human reads the result. There is no confirm/override workflow to build at MVP scope (that's a production concern, §9) — but the badge display itself is the trust mechanism, shown plainly, not hidden behind a UI polish layer.
+- ❌ **Not a true-positive/false-positive judgment engine.** ARES does not decide if an alert is real. It reconstructs what happened; a human (or, for the MVP, the labeled answer key) judges correctness.
+- ❌ **Not code-scan-first.** Code-scanning is a verification tool inside RCA and a separate add-on for automation review — not a first-class product pillar.
+- ❌ **Not targeting a real organization's logs.** The MVP is evaluated against public, labeled datasets (§8 Phase 1) — no target org, no live SIEM connector, no real customer data.
+- ❌ **Not "the private/on-prem SOC tool" as a standalone claim** — see §2; local-only is not the wedge.
 
 ---
 
-## 2A. 📚 LEARN — SEC-OPS DOMAIN PRIMER (read this closely)
+## 2. Positioning & wedge (why this, not something else)
 
-This is the knowledge you asked to have *before* we build. Without it, you can't judge whether the tool's outputs are any good. Each concept, plain language.
+### What changed from revision 1
+
+Revision 1's wedge — "turnkey, single-small-org, opinionated + stack-agnostic + code-scan-first" — was, in Codex's words, an **unvalidated inference from a feature survey**: it noticed code-scan was under-covered in the competitive landscape and concluded ARES should lead with it, without validating that a weak local model could actually deliver a code-scan feature worth leading with. That wedge is retired.
+
+### The wedge: the model proposes, deterministic tools dispose
+
+Research #01 (`docs/research/01-local-model-triage-quality.md`) found that a raw local small model, asked to judge an alert cold, is not trustworthy — it is a real, cited finding worth taking seriously as **motivation** for why ARES cannot simply trust model output. **This document does not, however, cite or imply any performance number for ARES itself.** The disputed figure that structured orchestration lifted the *studied models'* accuracy in that field study is **not restated here in any form** — it described different models in a different study, not a validated property of this pipeline, and revision 1 treated it as load-bearing when it was not.
+
+What actually solves the trust problem, and does not depend on any accuracy number holding up: **make every claim the model emits pass through a deterministic check before anyone reads it as fact.** Technique claims get checked against Sigma-rule timelines. Identifier claims (CVE IDs, ATT&CK technique IDs) get checked against real registries. Log-fact claims get checked against the actual parsed log store. Anything with no deterministic check available gets badged **unverifiable** rather than presented as if it had been checked. This is a structural fix, not a statistical bet — it is true regardless of whether the underlying model is right 50% of the time or 95% of the time, which is exactly why it does not need the disputed figure to be true.
+
+### Why this is a genuine gap (not "local and private," which is not)
+
+Research #02 (competitive landscape) is unchanged in its core finding: "local + private" is not an unfilled niche — Elastic ships a fully-local, air-gapped option today, and the OSS/DIY space (AI_SOC, SOCFortress, Wazuh-Ollama) already does local Ollama triage + RAG over MITRE/CVE/runbooks. What research #02 did **not** examine, because it wasn't the question at the time, is how any of these tools handle the model's claims once made:
+
+- **AI_SOC** produces structured JSON verdicts with a **self-reported confidence score** — the model grading its own work.
+- **SOCFortress CoPilot** and **Wazuh-Ollama** wrap a local LLM around Wazuh alerts and hand back a narrative — no independent check of the narrative's factual claims.
+- **Elastic's AI Assistant / Attack Discovery** surfaces model-generated findings with citations back to the underlying data, but does not badge individual factual claims as independently verified or refuted against a deterministic source.
+
+None of the local/OSS or commercial options in the landscape **badge model claims against deterministic checks.** They trust the model (or its self-reported confidence) and present that as the output. That is the defensible line ARES draws: not "we're also local" (table stakes, per research #02/#03), but "we don't ask you to trust the model — we show you what was checked and how."
+
+### Who this is for (segment targeting — now mostly moot at MVP scope)
+
+Research #03 found the no-egress property is a strong, switch-deciding requirement in mandated segments (defense/classified, regulated healthcare/payments, EU financial/critical-infrastructure, IP-sensitive source-code-heavy orgs) but only a secondary differentiator in the mainstream commercial SOC market. This targeting logic is **kept as a record** for whenever a production track opens — it is **largely moot at MVP scope**, since the MVP targets no organization at all, runs against public datasets, and is not being sold or deployed anywhere. The per-segment compliance surface (what each of those segments would actually require) is explicitly deferred — see §9.
+
+### 2.1 The causality fix — relational evidence, not temporal adjacency (Codex round-2 finding 1, resolved; further narrowed by Codex round-3 finding 1) ⭐
+
+**This is the most important correction across revisions 3 and 4. It gets prominence deliberately.**
+
+Codex's round-2 review of revision 2 identified a real hole: revision 2's wedge treated a Hayabusa timeline as if it verified causation. It does not. A timeline verifies **observed order** — event A's timestamp precedes event B's. A Sigma match verifies that **a rule predicate fired** — the logged fields matched a detection rule's pattern. A CVE or ATT&CK ID existing in a registry verifies that **the identifier is real** — not that it *applies* to this incident. None of these is the same claim as "A caused B," and revision 2 was, in effect, badging causal claims as verified on evidence that only supported a weaker claim. Codex was right to call this out.
+
+**Codex's round-3 review then caught the residual overclaim in revision 3's fix:** even "relational evidence" (a shared `LogonId`, a process-bound network connection, etc.) does not prove causation in the everyday sense — it proves a specific, narrower relation. Revision 4 corrects the sixth claim type below accordingly.
+
+**Six claim types, six different verification semantics — do not conflate them:**
+
+| # | Claim type | What "verified" actually means for it |
+|---|---|---|
+| 1 | **Event existence** | The parsed log store contains this event. |
+| 2 | **Chronology** | Event A's timestamp precedes event B's (Hayabusa's timeline job). |
+| 3 | **Technique detection** | A Sigma rule's predicate matched these logged fields. |
+| 4 | **Identifier validity** | The CVE/ATT&CK ID exists in the registry (NVD mirror / mitreattack-python). |
+| 5 | **Identifier applicability** | This *specific* CVE/technique ID plausibly applies to *this* incident's evidence — a stronger, separate claim from #4. |
+| 6 | **Relational predicate** *(renamed from "Causation," revision 4 — Codex round-3 finding 1)* | One of four narrow, named relations holds between two events — `SPAWNED`, `SAME_SESSION`, `WROTE_PATH_BEFORE_EXECUTION`, or `PROCESS_OPENED_CONNECTION` (contracts below). **None of these, alone, is "A caused B."** A higher-level causal claim assembled from one or more of them is a separate, seventh notion — **composition** — and is unverifiable at MVP scope (no composition rule is defined, below). |
+
+**The relational-evidence rule, corrected (Codex round-3 finding 1, accepted without defense):** revision 3's rule badged a single generic "causal edge VERIFIED" whenever any relational-evidence check matched. Codex was right that this overclaims: a shared `LogonId` joins **every** action in a session, not just the two the model happened to link; process-bound network telemetry says *which process* opened a connection, not that the connection *caused* some other event; write-then-execute proves a write and an execution of the same path happened in order, not that the executed bytes came from that specific write; parent/child (`ProcessGuid`→`ParentProcessGuid`) proves spawning, not that the parent "enabled" whatever the child later did (e.g. a credential dump three hops downstream). Each of these is a real, narrow, checkable relation — none of them is "causation" in the everyday sense the old badge implied.
+
+**Fix: relation-specific predicate contracts, not one causal badge.** A relation may be badged only under its own name, with its own contract stating exactly what it proves and — just as importantly — what it does **not** prove. Four predicates at MVP scope. **Every join below is host-scoped: `Hostname` (host identity) is a required equality condition on every predicate, not just an incidental field** — `LogonId` is local to a host and is reused after reboot, and identical file paths exist on every host, so without a `Hostname` match a predicate can badge a coincidence between two unrelated hosts (Codex round-4 finding 1, verified independently against real Sysmon field semantics). **Field-name note (revision 6, measured against the actual OTRF corpus):** the host field is named `Hostname` in this dataset's normalised JSON (e.g. `SCRANTON.dmevals.local`), **not** `Computer`. `Computer` is the correct field name in raw Windows EVTX/Sysmon XML — this OTRF corpus normalizes it to `Hostname` on ingest. The parser must map whichever field name it actually finds in a given source to the same internal host-identity field; the host-scoping requirement below is unchanged regardless of which name the source uses:
+
+| Predicate | Badge | Required Sysmon fields | Match condition | Proves | Does NOT prove |
+|---|---|---|---|---|---|
+| **SPAWNED** | `SPAWNED` | Event ID 1 (`ProcessGuid`, `ParentProcessGuid`, `Hostname`) on both events | Child's `ParentProcessGuid` equals parent's `ProcessGuid`, **and both events share the same `Hostname`** | Process A spawned process B | That B's later actions were "caused by" or "enabled by" A beyond the spawn itself |
+| **SAME_SESSION** | `SAME_SESSION` | `LogonId` + `Hostname`, read from an **Event ID 1 (ProcessCreate) record** — see derivation below | The two processes' Event ID 1 records share the same `LogonId` **and the same `Hostname`**, **and that shared `LogonId` is not one of the well-known logon sessions `0x3e7` (SYSTEM), `0x3e4` (NETWORK SERVICE), or `0x3e5` (LOCAL SERVICE)** — see the well-known-session exclusion below | Both actions occurred under the same authenticated **user** session on the same host | That one action caused the other — a session may contain many unrelated actions. **Also does not apply to well-known logon sessions at all** — SYSTEM/NETWORK SERVICE/LOCAL SERVICE are excluded from this predicate structurally, not merely discouraged as weak evidence; a pair whose only shared session is one of these can never earn this badge, however often the `LogonId` recurs |
+| **WROTE_PATH_BEFORE_EXECUTION** | `WROTE_PATH_BEFORE_EXECUTION` | Event ID 11 (`TargetFilename`, `Hostname`) preceding, on the **same `Hostname`**: Event ID 1 (`Image`) **or** Event ID 7 (`ImageLoaded` — not `Image`, see note below), same normalised path | A write event to path P has an earlier timestamp than an execution/load event of the same normalised path P on the same host | A file was written, then that same path was later executed/loaded on that host | That the executed bytes are the ones written by that specific write event (the path may have been overwritten again in between, or executed via a symlink/junction) |
+| **PROCESS_OPENED_CONNECTION** | `PROCESS_OPENED_CONNECTION` | Event ID 3 (`ProcessGuid`, `Hostname`, `SourceIp`, `DestinationIp`, `DestinationPort`) | The network event's `ProcessGuid` **and `Hostname`** match the process under evaluation | The named process, specifically, opened this network connection | That the connection caused, or was caused by, any other logged event |
+
+**`SAME_SESSION` derivation (Codex round-4 finding 1, corrected — verified independently against real Sysmon field semantics):** only Event ID 1 (ProcessCreate) carries `LogonId`/`LogonGuid`. Event IDs 3 (NetworkConnect) and 11 (FileCreate) do **not**. So `SAME_SESSION` is never evaluated directly against a non-EID-1 event's own fields: for a non-EID-1 event, the checker joins via that event's `ProcessGuid` to the **same process's own EID 1 record** and reads `LogonId`/`Hostname` from there. **If the EID 1 record for that `ProcessGuid` is absent from the capture, `SAME_SESSION` cannot be evaluated for that event at all — the claim is an Aporia, never a badge, never a default "no match."** **Measured on the dev incident (revision 6): this join resolves only 37% of EID 3 (NetworkConnect) events, 77% of EID 11 (FileCreate) events, and 95% of EID 7 (ImageLoad) events — see §0.5's "Revision 5 → 6" entry and §8 Phase 1 for the full numbers and why this is a measured coverage ceiling of the corpus, not a pipeline defect.** `LogonId` reuse after reboot is a real hazard even within a single host: **at MVP scope, `SAME_SESSION` is scoped to a single host and a single capture window** (per §7.5 Decision B's frozen-incident scoping) specifically to sidestep the reboot/reuse hazard — a future revision spanning multiple capture windows on the same host must additionally bound the join by a session-start/logon timestamp, which this MVP does not attempt.
+
+**`SAME_SESSION` well-known-session exclusion (revision 6, measured, no prior adversarial round caught this):** measured on the dev incident, of 19 distinct `LogonId`s appearing on Sysmon EID 1 records, 2 — `0x3e7` (SYSTEM) and `0x3e4` (NETWORK SERVICE) — appear on **all four hosts**. These are Windows' well-known logon sessions, not user sessions (`0x3e5`, LOCAL SERVICE, completes the family); within a single host they join thousands of mutually unrelated events. **`0x3e7`, `0x3e4`, and `0x3e5` are excluded from the `SAME_SESSION` predicate entirely.** A pair of events whose only shared session is one of these does **not** earn a `SAME_SESSION` badge — it resolves to an Aporia (`causal_gap`, §6) with `verification_failure_code = well_known_session`. State this reasoning here explicitly so a later reader cannot re-add well-known sessions to the predicate by accident, reasoning that "it's still a real matching `LogonId`, so why exclude it" — it is real, and that is exactly the problem: it proves the two events shared a Windows-internal service account, not that they are related in any way useful to a causal reconstruction. This is recorded in §9 as a measured limitation of session-based reasoning generally, not specific to this dataset.
+
+**`WROTE_PATH_BEFORE_EXECUTION` field-per-event-type note (Codex round-4 finding 1, corrected):** for Event ID 7 (ImageLoad) the compared field is **`ImageLoaded`** (the module path being loaded), **not** `Image` (the path of the hosting process that is doing the loading) — conflating the two badges "the process that loaded some module" as if it were "the module that got executed." For Event ID 1 (ProcessCreate) the compared field remains `Image`.
+
+**Temporal adjacency alone is never sufficient** to earn any of the four predicate badges above, no matter how tight the time window — each predicate's match condition is a field-level join, not a time-window heuristic. If none of the four predicates match, the claim does **not** get badged by default, and it does **not** get silently dropped either — see the escalation loop next.
+
+**Composition (higher-level causal claims): unverifiable by default at MVP scope.** A narrative like "phishing email → macro executed → LOLBin spawned → credential dump" chains several predicate-level relations into one causal story. Promoting that chain to a higher-level VERIFIED causal claim requires a **separately specified composition rule** for that exact pattern — stating which predicates, in which order, over which event types, license the composite claim. **No composition rule is defined at MVP scope.** Consequently, any higher-level causal claim beyond a single predicate's own scope is, by construction, an **Aporia** (`causal_gap`) — never VERIFIED, no matter how many individual predicates in the chain matched. This is a deliberate MVP-scope limitation, not an oversight: it is the honest consequence of finding 1 taken seriously, and it is recorded here so a future revision that wants richer causal claims knows exactly what work (composition-rule authoring, its own confounded-negative fixtures) that requires. **This is also why, per §6, a labeled composite edge in the frozen ground-truth artifact is recorded only as an unscored annotation, never as a scoreable key entry — the artifact must not claim to score something the pipeline structurally cannot earn (Codex round-4 finding 2b).**
+
+**Validation fixtures, mandatory (Codex round-4 finding 1 — a predicate does not ship without these; count and sourcing corrected in revision 6 against real data).** Each predicate is validated at build time against a small set of hand-labeled Sysmon fixtures: **positive** cases (the relation genuinely holds) and **confounded-negative** cases (fields superficially resemble a match but the relation does not hold). **Seven** named confounded-negative fixtures are now mandatory across the predicate set — every predicate that touches the hazard in question must pass its own instance:
+1. **Cross-host same-`LogonId`** — two events on different hosts sharing a `LogonId` value must NOT badge `SAME_SESSION`. **Sourceable from real data (revision 6):** `0x3e7`/`0x3e4` appear on all four hosts in the dev incident — real cross-host same-`LogonId` pairs exist, though per the next fixture they are also well-known sessions, so this fixture's positive case doubles as fixture 7's real-world test data.
+2. **Cross-host same-path — synthetic, hand-constructed (revision 6, measured).** A write on host A and an execution of the identically-named path on host B must NOT badge `WROTE_PATH_BEFORE_EXECUTION`. **The dev incident contains zero cross-host same-path cases** — this fixture cannot be sourced from real data and must be hand-constructed. Synthetic fixtures are legitimate for testing a predicate's guard logic but must be labeled as such, here and wherever cited, and must never be counted in any coverage or recall metric.
+3. **Reboot `LogonId` reuse** — a `LogonId` reused across a reboot boundary on the same host, linking two genuinely unrelated sessions, must NOT badge `SAME_SESSION`.
+4. **Intervening overwrite** — path P is written, overwritten again, then executed; the predicate must not badge the *first* write as the one that ran.
+5. **Symlink/junction indirection** — a write to path P and an execution reached via a symlink/junction to P must not silently badge as if it were the same literal path without that indirection being accounted for.
+6. **Event-7 `Image`-vs-`ImageLoaded` confusion** — a fixture where a process's own `Image` path superficially matches an unrelated written path, but the actually-loaded module's `ImageLoaded` does not, must NOT badge `WROTE_PATH_BEFORE_EXECUTION`.
+7. **Well-known session (new, revision 6, measured — no adversarial round caught this).** Two unrelated events on the same host that share only a well-known logon session (`0x3e7` SYSTEM, `0x3e4` NETWORK SERVICE, or `0x3e5` LOCAL SERVICE) must NOT badge `SAME_SESSION` — they must resolve to an Aporia with `verification_failure_code = well_known_session`. **Sourceable from real data:** the dev incident's `0x3e7`/`0x3e4` events across all four hosts are exactly this case.
+
+Any fixture not explicitly marked synthetic above is expected to be sourceable from the dev incident's real logs; a predicate that fails any applicable mandatory confounded-negative fixture does not ship.
+
+**The escalation and learning loop (owner decision):** an unverifiable causal claim is a first-class record, not a dead end.
+1. It **persists** as a `causal_gap` row (schema, §6) — user-facing label **Aporia**.
+2. It **raises a ticket** for a human engineer to adjudicate (§3/§6 — local JSON outbox at MVP scope; ServiceNow is a later version).
+3. On resolution, the relational knowledge the human supplied is **written back** into the RAG store as a scoped case precedent (§3/§6), so future incidents can resolve similar links faster.
+
+**The badge firewall (non-negotiable — full detail in §3, now structural at the schema level, Codex round-3 finding 4):** retrieved precedents may guide the model's *hypotheses*, but may **never** directly assign a predicate badge. Only fresh relational evidence, evaluated against the *current* incident's logs and recorded as a successful `verifier_execution` row (§6), can do that. Without this rule the learning loop is circular and a single mistaken human call amplifies indefinitely across every future incident it resembles. As of this revision, the firewall is not policy text alone — a badge is only assignable by reference to a same-incident `verifier_execution` row, enforced structurally (§6).
+
+---
+
+## 2B. 📚 LEARN — SEC-OPS DOMAIN PRIMER (read this closely)
+
+This is the knowledge you asked to have *before* we build. Each concept, plain language.
 
 ### The setting
-- **Sec-Ops / SOC.** "Security Operations" is the practice of defending an organization's systems day-to-day. The team/room that does it is a **SOC** (Security Operations Center). Their job loop: **detect → triage → investigate → respond → recover → learn.** Prahari is a *copilot* for that loop, not a replacement.
-- **Blue team vs red team.** **Blue** = defenders (what we're building for). **Red** = attackers/pentesters who probe defenses. **Purple** = the two collaborating. Prahari is a **blue-team** tool.
+- **Sec-Ops / SOC.** "Security Operations" is the practice of defending an organization's systems day-to-day. The team/room that does it is a **SOC** (Security Operations Center). Their job loop: **detect → triage → investigate → respond → recover → learn.** ARES's MVP sits inside the *investigate* step: given a set of alerts/logs, reconstruct what happened.
+- **Blue team vs red team.** **Blue** = defenders (what we're building for). **Red** = attackers/pentesters who probe defenses. **Purple** = the two collaborating. ARES is a **blue-team** tool.
 
 ### The signals a SOC drowns in
 - **Log.** A timestamped record of something that happened (a login, a firewall block, a file change). Machines emit millions.
-- **Event vs alert.** An **event** is any logged occurrence. An **alert** is an event (or pattern) a detection rule decided is *worth a human's attention*. SOCs get far more alerts than they can handle → **alert fatigue** → real threats missed. **This is the pain Prahari's triage feature attacks.**
-- **SIEM.** *Security Information and Event Management* — the system that collects logs from everywhere, runs detection rules, and raises alerts (e.g. Splunk, Elastic, Microsoft Sentinel, Wazuh). Prahari does **not** replace a SIEM; it helps an analyst *understand and prioritize* the alerts a SIEM produces.
-- **EDR / IDS/IPS / NDR.** Sensors that feed the SIEM: **EDR** (Endpoint Detection & Response — watches laptops/servers), **IDS/IPS** (Intrusion Detection/Prevention — watches network traffic), **NDR** (Network Detection & Response). You just need to recognize them as *sources of alerts*.
+- **Event vs alert.** An **event** is any logged occurrence. An **alert** is an event (or pattern) a detection rule decided is *worth a human's attention*. SOCs get far more alerts than they can handle → **alert fatigue**. ARES's MVP doesn't solve alert-volume triage (that would be a TP/FP-verdict tool, which is explicitly not what this is) — it solves the *next* problem: once you're looking at a cluster of related alerts, what actually happened?
+- **SIEM.** *Security Information and Event Management* — the system that collects logs from everywhere, runs detection rules, and raises alerts (e.g. Splunk, Elastic, Microsoft Sentinel, Wazuh). ARES does **not** replace a SIEM; at MVP scope it doesn't even connect to one — it ingests exported log/alert data from a public labeled dataset (§8).
+- **EDR / IDS/IPS / NDR.** Sensors that feed the SIEM: **EDR** (Endpoint Detection & Response), **IDS/IPS** (Intrusion Detection/Prevention), **NDR** (Network Detection & Response). Recognize them as *sources of the log data ARES ingests*.
 
-### Triage — the core skill your tool must imitate
-- **Triage.** Rapidly deciding, for each alert: *is this real, how bad, what next?* Three buckets: **true positive** (real threat), **false positive** (rule fired but harmless — most alerts), **benign true positive** (real activity but authorized). A good triage assistant explains *which* and *why*.
-- **Severity & priority.** How bad (impact) and how urgent (impact × likelihood × exposure). Usually **Critical / High / Medium / Low / Info**. Prahari's triage must assign and *justify* a severity — that justification is the product.
-- **IOC — Indicator of Compromise.** A concrete artifact suggesting a breach: a malicious IP, file hash, domain, or URL. Analysts pivot on IOCs ("has this hash been seen elsewhere?").
-- **MITRE ATT&CK.** THE industry map of attacker behavior — a catalog of **tactics** (the attacker's goal, e.g. *Initial Access, Persistence, Exfiltration*) and **techniques** (how, e.g. *T1566 Phishing*). Mapping an alert to ATT&CK turns "weird log line" into "this looks like the *Persistence* stage." Prahari's triage should reference ATT&CK where it can — huge value, and it grounds the model.
+### Root-cause analysis (RCA) — the core skill your tool must imitate
+- **RCA, plainly.** Given a set of related events, work out **the sequence** (what happened first, second, third) and **the causation** (why each step plausibly enabled the next) — not just "this alert is real," but "here is the story, told in order, with the evidence for each link." A good RCA is checkable: someone with the raw logs could re-derive the same timeline.
+- **Timeline.** The ordered list of events with timestamps — the spine of an RCA. Getting the *order* right (not just which events are relevant) is often the hard part; clock skew, log-source differences, and multi-host correlation all make this genuinely difficult, which is why a dedicated timelining tool (Hayabusa, §3) does this job rather than the model.
+- **Causal chain.** The claim-by-claim story linking timeline events: "process A spawned process B" → "process B wrote file C" → "file C matches known persistence technique T1547." Each link is a discrete, checkable **claim** — this is the unit the verification layer (§2/§3) operates on.
+- **Claim badge (verified / refuted / unverifiable).** The output of running a claim through a deterministic check. **Verified** = a tool or the log store confirms it. **Refuted** = a tool or the log store contradicts it. **Unverifiable** = no deterministic check exists for that claim type yet — shown honestly, not hidden or defaulted to "verified."
+- **Why "temporal order" and "causation" are not the same claim.** A timeline (§3, Hayabusa) tells you event B happened after event A. That is **chronology**, one of six distinct claim types ARES's schema tracks (event existence, chronology, technique detection, identifier validity, identifier applicability, relational predicate — §2.1). Conflating chronology with causation is exactly the mistake Codex's review caught in revision 2; ARES's claim schema exists so the pipeline (and the human reading its output) can't make that mistake by accident.
+- **Why "causation" itself splits into four narrower, honestly-named predicates.** Codex's round-3 review caught a second, subtler version of the same mistake: even the "relational evidence" fixes from revision 3 don't prove causation in the everyday sense — a shared `LogonId` joins a whole session's worth of unrelated actions, not just the two events someone points at. So revision 4 replaces the single "causal edge VERIFIED" badge with four **relation-specific predicate contracts** — `SPAWNED`, `SAME_SESSION`, `WROTE_PATH_BEFORE_EXECUTION`, `PROCESS_OPENED_CONNECTION` (full contracts, §2.1) — each proving exactly one narrow thing and none of them proving "A caused B" in general. Chaining several predicates into a bigger causal story ("phishing → macro → LOLBin → credential dump") is called a **composition**, and at MVP scope no composition rule exists — so composite causal claims are always an Aporia, never VERIFIED, however many of their component predicates individually matched.
+- **Aporia / causal gap.** ARES's name for a causal claim the model proposed that the relational-evidence rule could not verify or refute. Not a failure state to hide — a **first-class, persistent record** that escalates to a human adjudicator and, once resolved, feeds a learning loop (§2.1, §3, §6).
+- **The badge firewall.** The rule that a retrieved historical adjudication (a resolved Aporia from a past incident) may inform the model's *hypothesis* but can never itself produce a VERIFIED badge on a new incident — only fresh relational evidence, checked against the current logs, earns that badge. This is what keeps the learning loop from becoming self-confirming (§3).
+- **Why this replaces a TP/FP verdict.** A TP/FP verdict is a single yes/no judgment about an *alert*. An RCA is a *reconstruction* of an *incident* — richer, and, crucially, independently checkable against ground truth (an ATT&CK label, a BOTS answer key) without ARES itself having to be the judge of its own correctness.
+- **IOC — Indicator of Compromise.** A concrete artifact suggesting a breach: a malicious IP, file hash, domain, or URL. In an RCA, IOCs are evidence *within* a claim ("host X connected to IP Y, a known C2 IOC"), not a separate feature.
+- **MITRE ATT&CK.** THE industry map of attacker behavior — a catalog of **tactics** (the attacker's goal, e.g. *Initial Access, Persistence, Exfiltration*) and **techniques** (how, e.g. *T1566 Phishing*). ARES's causal chain should map steps to ATT&CK techniques wherever possible — this is also the scoring axis for the MVP demo (§8 Phase 1): does the reconstructed chain's technique labels match the dataset's ground-truth ATT&CK labels?
 
 ### Vulnerabilities & threat intel
 - **Vulnerability.** A weakness that could be exploited (unpatched software, misconfiguration, a code bug). Different from a **threat** (who/what might attack) and a **risk** (likelihood × impact of it happening).
-- **CVE.** *Common Vulnerabilities and Exposures* — a global ID for a specific known vulnerability, e.g. **CVE-2024-3094** (the xz backdoor). When news says "patch CVE-XXXX," this is the label.
-- **CVSS.** *Common Vulnerability Scoring System* — a 0.0–10.0 severity score for a CVE (9.0+ = Critical). Lets you rank what to fix first. Prahari should speak in CVE + CVSS terms.
-- **Threat intelligence (CTI).** Curated knowledge about attackers, campaigns, IOCs, and vulnerabilities. This is what the **Phase-1 Q&A** feature serves: your analysts ask questions, the model answers from your CTI documents.
-- **Threat intel Q&A vs a search box.** The value isn't keyword search — it's the model *synthesizing* across your runbooks/CVE notes and *explaining* in context.
+- **CVE.** *Common Vulnerabilities and Exposures* — a global ID for a specific known vulnerability, e.g. **CVE-2024-3094** (the xz backdoor). An identifier claim ARES's model might emit ("this matches CVE-2024-3094") is exactly the kind of claim the NVD-mirror verification tool (§3) exists to check — did that CVE ID actually get invented, or does it exist?
+- **CVSS.** *Common Vulnerability Scoring System* — a 0.0–10.0 severity score for a CVE (9.0+ = Critical).
+- **Threat intelligence (CTI).** Curated knowledge about attackers, campaigns, IOCs, and vulnerabilities. The RAG layer (§3) retrieves from CTI documents/runbooks to ground the planner's evidence requests.
 
-### Code vulnerabilities (Phase 3's domain)
-- **OWASP Top 10.** The industry's list of the 10 most critical *web-application* security risks (e.g. **Injection**, **Broken Access Control**, **SSRF**). The common language for "what's wrong with this app."
-- **CWE.** *Common Weakness Enumeration* — a catalog of *types* of code weakness, e.g. **CWE-89 SQL Injection**, **CWE-79 Cross-Site Scripting (XSS)**, **CWE-78 OS Command Injection**. A CVE is a *specific* bug; a CWE is the *category* of bug. Prahari's scanner should tag findings with CWE IDs — precise, searchable, credible.
-- **SAST vs DAST.** **SAST** (Static Application Security Testing) analyzes code *without running it* — reading source for dangerous patterns. **DAST** runs the app and attacks it. Prahari's scanner is **SAST** (we never execute uploaded code — safer, and matches the model's strength: reading code).
-- **False positives, again.** SAST tools (and LLMs) over-report. That's why §8 Phase 3 pairs the model's *explanation* with a fast deterministic tool (`semgrep`) for *confirmation*. Understanding this trade-off is why you, the builder, must know the domain.
+### Code vulnerabilities (now a verification tool + a separate add-on, not the product)
+- **OWASP Top 10 / CWE.** The industry's list of critical web-app risks (Injection, Broken Access Control, SSRF) and the catalog of weakness *types* (CWE-89 SQLi, CWE-79 XSS, CWE-78 OS command injection). Relevant to the code-review add-on (§8 Phase 3), where findings should be tagged with CWE IDs.
+- **SAST vs DAST.** **SAST** analyzes code without running it; **DAST** runs and attacks the app. Both the in-loop verification use of semgrep and the code-review add-on are **SAST** — uploaded/scanned code is never executed.
+- **Why "vibe-coded automation" is the add-on's actual target.** AI-generated glue scripts, n8n flow exports, and agent tooling are increasingly common inside orgs and are rarely security-reviewed by anyone, because they weren't written by a human developer who'd normally get code review. Gitleaks (hardcoded credentials) is likely the single highest-yield check against this class of artifact — AI-generated scripts routinely embed API keys and tokens inline. Semgrep catches unsafe patterns (injection, unsafe eval, over-broad scopes); osv-scanner catches known-vulnerable dependencies.
 
 ### The frameworks people will expect you to speak
-- **NIST CSF** (Identify, Protect, Detect, Respond, Recover) and **incident-response lifecycle** (Prepare → Detect & Analyze → Contain → Eradicate → Recover → Post-incident). You don't implement these, but Prahari's language and triage steps should echo them so real analysts trust it.
+- **NIST CSF** (Identify, Protect, Detect, Respond, Recover) and the **incident-response lifecycle** (Prepare → Detect & Analyze → Contain → Eradicate → Recover → Post-incident). ARES's RCA output should echo this vocabulary even though it doesn't implement the full lifecycle.
+- **Data-residency frameworks** that shaped §2's (now largely moot at MVP scope) segment targeting: **GDPR**, **HIPAA/PCI DSS**, **DORA/NIS2**. Kept as background; see §9 for why they don't drive MVP-scope decisions.
 
-> **Why this primer matters for the build:** these terms become the *vocabulary of the prompts, the severity labels, the finding schema, and the sample data*. When we design the triage prompt, we'll tell the model to "map to MITRE ATT&CK, assign CVSS-style severity, cite CWE for code" — decisions that only make sense once you know the words above.
-
----
-
-## 2B. 📚 tech concepts (lighter — this is your home turf)
-
-Skim these; you likely know most. Included so the doc is self-contained.
-
-- **LLM / SLM.** A Large Language Model is a program that predicts text — it powers chatbots. A **Small** Language Model (SLM) is the same idea but with far fewer "parameters" (internal numbers), so it fits on a laptop instead of a datacenter. Ours is **4 billion parameters (4B)**. For comparison, ChatGPT-class models are hundreds of billions. Small = private, cheap, fast enough — at the cost of some cleverness, which we compensate for with RAG (below).
-
-- **Parameters & "weight."** More parameters = smarter but bigger and slower. "Lightweight model" = few parameters = fits in your 16GB. Your hard ceiling on an M4/16GB is roughly a **4B model held live**, or a **7–8B model swapped in on demand**.
-
-- **Quantization / GGUF / Q4.** A model's parameters are normally stored as big precise numbers. **Quantization** shrinks them to smaller, rougher numbers (like saving a photo as a smaller JPEG). `Q4` = 4-bit quantization = ~4× smaller, tiny quality loss. **GGUF** is just the file format these quantized models ship in. So "CyberSecQwen-4B Q4_K_M GGUF" = the 4-billion-param security model, 4-bit-compressed, ~2.5GB file.
-
-- **Ollama.** A free program that runs these models locally with one command. Think "Docker for language models." You run `ollama pull <model>` once, then any app on your machine can talk to it at `http://localhost:11434`. This is the single biggest reason a low-proficiency dev can do this — Ollama hides all the hard parts.
-
-- **RAG (Retrieval-Augmented Generation).** THE key idea. A small model doesn't *know* your company's runbooks or the latest CVEs. Instead of expensively re-training it (fine-tuning), we **retrieve** relevant chunks of your documents and **paste them into the question** before the model answers. So the model reads your docs at question-time and answers from them. No training, no ML skill needed. This is why we chose RAG over fine-tuning for a low-proficiency team.
-
-- **Embeddings & vector search.** To "find relevant chunks," we convert every document chunk into a list of numbers (an **embedding**) that captures its meaning. Similar meaning → similar numbers. When you ask a question, we embed the question too and find the chunks with the closest numbers (**vector search**). A separate small model (`nomic-embed-text`, via Ollama) makes these embeddings.
-
-- **Vector database.** Where embeddings live and get searched. Most tutorials use a heavy separate server (Chroma, Pinecone). We use **`sqlite-vec`** — a tiny extension that does vector search *inside an ordinary SQLite file*. No extra server to run. One `.db` file holds everything. (This is a deliberate laziness/lightweight win.)
-
-- **RBAC (Role-Based Access Control).** "Who can do what." We define a few **roles** (e.g. Admin, Analyst, Viewer) and attach permissions to roles, not to individual people. Assign a user a role and they inherit its permissions. Standard, simple, auditable.
-
-- **Prompt injection (security risk for US).** Because we paste retrieved documents (and pasted logs, and uploaded code) *into the model's prompt*, a malicious document could contain text like "ignore your instructions and…". Since this is a **security tool handling untrusted input by design**, we must treat all ingested content as hostile. Mitigations are in §9.
+> **Why this primer matters for the build:** these terms become the vocabulary of the prompts, the claim schema, the timeline format, and the scoring rubric. When we design the planner/adjudicator prompts, we tell the model to "map to MITRE ATT&CK, cite CVE/CWE where relevant, and state every claim so it can be checked" — decisions that only make sense once you know the words above.
 
 ---
 
-## 3. 🔧 BUILD — architecture (the whole system on one screen)
+## 2C. 📚 tech concepts (lighter — this is your home turf)
+
+- **LLM / SLM.** A Large Language Model predicts text. A **Small** Language Model (SLM) is the same idea with far fewer parameters, so it fits on a laptop. Ours is in the **4–8 billion parameter** range (§5). ChatGPT-class models are hundreds of billions. Small = private, cheap, fast — the verification layer (not raw model cleverness) is what makes that acceptable.
+- **Parameters & "weight."** More parameters = smarter but bigger/slower. Your hard ceiling on an M4/16GB is roughly an **8B model held live**.
+- **Quantization / GGUF / Q4.** Shrinks a model's numbers to smaller, rougher ones (like a smaller JPEG). `Q4` = 4-bit, ~4× smaller, small quality loss. **GGUF** is the file format.
+- **Ollama.** Runs local models with one command — `http://localhost:11434`. Hides the hard parts.
+- **RAG (Retrieval-Augmented Generation).** Retrieve relevant document/log chunks and paste them into the prompt before the model answers, rather than relying on training-time memory (which has a **cutoff date**). Necessary but not sufficient alone — it's one stage of the pipeline (§3), and it does not by itself make a claim trustworthy; the verification layer does that.
+- **Planner / adjudicator pipeline.** A **planner** stage decides what evidence is needed (retrieval, IOC lookups, timeline construction) and requests it; deterministic **evidence assembly** runs (no model call); an **adjudicator** stage writes the timeline/causal-chain narrative *grounded in* that evidence; a **verification pass** badges every discrete claim in that narrative; a human reads the badged result. §3 makes this the architecture's spine.
+- **Embeddings & vector search.** Convert document/log chunks into numbers capturing meaning (**embedding**); find the closest ones to a query (**vector search**). `nomic-embed-text` (via Ollama) makes these.
+- **Vector database.** Where embeddings live and get searched. We use **`sqlite-vec`** — vector search inside an ordinary SQLite file, no separate server.
+- **Prompt injection (security risk for US).** Because we paste retrieved logs/documents into the model's prompt, a malicious log line or document could contain "ignore your instructions and…". Mitigated by treating all ingested content as data, never instructions (§10).
+
+---
+
+## 3. 🔧 BUILD — architecture (RCA core + verification layer)
+
+The pipeline is the product. Revision 1's diagram showed retrieval feeding a planner/adjudicator that produced a triage *verdict*; this revision replaces the output with a **timeline + causal chain**, and makes the verification/badging step an explicit, first-class stage rather than folded into "evidence assembly."
 
 ```
-                         ┌──────────────────────────────────────────┐
-   Browser (you)         │              Prahari (localhost)          │
-  ┌───────────────┐      │                                           │
-  │  Dashboard    │◄────►│  FastAPI backend (Python)                 │
-  │  (HTMX +      │ HTTP │   ├─ Auth + RBAC (login, roles)           │
-  │   Tailwind)   │      │   ├─ Q&A / triage / scan endpoints        │
-  └───────────────┘      │   ├─ RAG engine ──────────┐               │
-                         │   │                        ▼               │
-                         │   │              ┌──────────────────┐      │
-                         │   │              │  SQLite (1 file) │      │
-                         │   │              │  • users/roles   │      │
-                         │   │              │  • documents     │      │
-                         │   │              │  • embeddings    │      │
-                         │   │              │   (sqlite-vec)   │      │
-                         │   │              │  • alerts/scans  │      │
-                         │   │              └──────────────────┘      │
-                         │   ▼                                         │
-                         │  Ollama (localhost:11434)                  │
-                         │   ├─ CyberSecQwen-4B  (sec brain)          │
-                         │   ├─ nomic-embed-text (embeddings)         │
-                         │   └─ Qwen2.5-Coder-7B (code vuln, on-demand)│
-                         └──────────────────────────────────────────┘
-                              Everything on ONE machine. No cloud.
+                         ┌───────────────────────────────────────────────────────┐
+   Log/alert dataset     │                    ARES (localhost)                   │
+  ┌───────────────┐      │                                                       │
+  │  Labeled       │◄────►│  Ingest: parse dataset logs into the log store      │
+  │  incident data │      │                                                       │
+  │  (§8 Phase 1)  │      │   ▼                                                   │
+  └───────────────┘      │  ┌─────────────────────────────────────────────────┐  │
+                         │  │        THE RCA PIPELINE (core product)         │  │
+                         │  │                                                 │  │
+                         │  │  1. RETRIEVAL — embed the incident context,    │  │
+                         │  │     search sqlite-vec for relevant CTI/runbook │  │
+                         │  │     chunks (ATT&CK technique notes, CVE notes) │  │
+                         │  │              ▼                                 │  │
+                         │  │  2. TIMELINE CONSTRUCTION — Hayabusa runs      │  │
+                         │  │     Sigma rules over the parsed logs, emits    │  │
+                         │  │     an ordered, technique-tagged timeline      │  │
+                         │  │     (deterministic — no model call)            │  │
+                         │  │              ▼                                 │  │
+                         │  │  3. PLANNER — given the timeline + retrieved   │  │
+                         │  │     context, decides what else to check        │  │
+                         │  │     (CVE lookups, ATT&CK ID validation,        │  │
+                         │  │     specific log re-queries)                   │  │
+                         │  │              ▼                                 │  │
+                         │  │  4. ADJUDICATOR — SLM writes the causal-chain  │  │
+                         │  │     narrative: a sequence of discrete claims   │  │
+                         │  │     linking timeline events, grounded in the   │  │
+                         │  │     assembled evidence, with citations         │  │
+                         │  │              ▼                                 │  │
+                         │  │  5. VERIFICATION / BADGING — every claim is    │  │
+                         │  │     checked by the matching deterministic tool │  │
+                         │  │     (§3 table below), per its claim-type       │  │
+                         │  │     semantics (§2.1) — relational claims run   │  │
+                         │  │     through 1 of 4 named predicate contracts,  │  │
+                         │  │     never through temporal adjacency alone     │  │
+                         │  │              ▼                                 │  │
+                         │  │  6. ESCALATION — a claim no predicate matches, │  │
+                         │  │     or a composite causal claim (no           │  │
+                         │  │     composition rule exists), becomes an      │  │
+                         │  │     Aporia (`causal_gap` record), files a     │  │
+                         │  │     ticket, and (once a human resolves it)    │  │
+                         │  │     writes a scoped precedent back to the     │  │
+                         │  │     RAG store — never a direct badge (§3/§6)  │  │
+                         │  └─────────────────────────────────────────────────┘  │
+                         │                        │                                │
+                         │                        ▼                                │
+                         │  Output: timeline + badged causal chain + any open      │
+                         │  Aporia records, scoreable against ATT&CK labels /      │
+                         │  BOTS key                                               │
+                         │                                                       │
+                         │  Ollama (localhost:11434)                            │
+                         │   ├─ Foundation-Sec-8B  (default sec brain)          │
+                         │   ├─ CyberSecQwen-4B    (low-VRAM fallback profile)  │
+                         │   ├─ nomic-embed-text   (embeddings)                 │
+                         │   └─ Qwen2.5-Coder-7B   (code-review add-on only)    │
+                         └───────────────────────────────────────────────────────┘
+                              Everything on ONE machine. No cloud. No target org.
 ```
 
-**How a question flows (Phase 1 example):**
-1. You log in, type a question in the dashboard.
-2. FastAPI checks your role allows it.
-3. RAG engine embeds your question → searches `sqlite-vec` → gets top relevant doc chunks.
-4. Backend builds a prompt: *[your docs] + [your question] + [safety rules]* → sends to CyberSecQwen-4B via Ollama.
-5. Model's answer streams back to the dashboard, with the source chunks shown so you can verify.
+### Verification-layer tools, organized by the claim type each one checks
+
+| Claim type | Example | Tool | Notes |
+|---|---|---|---|
+| **Technique claim** ("this is T1003 / credential dumping") | "process X performed credential dumping" | **Hayabusa** (Sigma rules over EVTX, single Rust binary) | Also produces the timeline itself (§3 stage 2) — does double duty. Alternatives noted, not selected: **Chainsaw**, **Zircolite**. |
+| **Identifier claim** ("CVE-2024-XXXXX", "T1234") | "this matches CVE-2024-3094" | Local **NVD JSON feed mirror** (confirms the CVE ID exists, pulls real CVSS/affected products) + **mitreattack-python** with the ATT&CK STIX bundle (validates technique IDs and tactic mappings, offline) | Kills invented identifiers — a classic small-model failure mode. |
+| **Log-fact claim** ("user X logged in at 03:14", "process A spawned B") | any specific factual assertion about the logs | No third-party tool — the model emits a structured claim and the pipeline **re-queries the parsed log store** | Highest-volume check, zero new dependencies. |
+| **Chronology claim** ("step 2 happened after step 1") | "event B's timestamp follows event A's" | **Hayabusa's timeline** | Verifies *order only*. `plaso`/`log2timeline` explicitly deferred as too heavy for this scope. |
+| **Relational-predicate claim** ("process A spawned process B", "these two events share a session") | "`lsass.exe`'s `ParentProcessGuid` matches `rundll32.exe`'s `ProcessGuid`" → badged `SPAWNED` | **Four relation-specific predicate checkers** (§2.1): `SPAWNED`, `SAME_SESSION`, `WROTE_PATH_BEFORE_EXECUTION`, `PROCESS_OPENED_CONNECTION` | Temporal adjacency (Hayabusa's timeline) is **never** sufficient on its own for any of these — see §2.1. Each predicate proves exactly its own narrow relation and nothing more; none of them, alone or combined, is "causation." If no predicate matches, the claim escalates to an **Aporia** (`causal_gap`, §3/§6) rather than being badged or silently dropped. |
+| **Composite causal claim** ("step 1 *caused* step 2", chaining 2+ predicates) | "process A spawning process B enabled the credential dump" | **No composition rule is defined at MVP scope** | This is the class of claim Codex round-3 finding 1 caught being overclaimed. Without a defined composition rule for the specific chained pattern, the claim is **unverifiable by construction** — always an Aporia at MVP scope, never VERIFIED, however many of the component predicates matched individually. |
+| **Code claim (verification layer, in-loop)** | "this function is vulnerable to injection" | **Semgrep** | Runs inside the RCA loop when a code artifact is part of the incident evidence — distinct from the code-review add-on below, which is a separate feature over a different kind of artifact. |
+
+### The Badge Firewall — non-negotiable, and now structural at both the function AND the trigger level (Codex round-3 finding 4 + round-4 finding 4, both accepted) ⭐
+
+**Retrieved human adjudications (resolved Aporias from past incidents) may guide hypothesis generation and ranking, but may NEVER directly assign a predicate badge.** Only fresh relational evidence, evaluated against the *current* incident's logs, can produce a badge on a relational-predicate claim.
+
+**Why this matters — without it, the learning loop breaks in three specific ways:**
+1. It becomes **circular**: a claim gets called "verified" because a similar-looking case was confirmed once, not because *this* incident's logs support it.
+2. A **single mistaken analyst decision amplifies indefinitely** — every future incident that superficially resembles it inherits the same wrong verdict, with no way to unwind it.
+3. **Host-specific or environment-specific relationships get generalised across unrelated environments** — a relation that held on one Windows domain controller does not necessarily hold on an unrelated Linux fleet.
+
+**What Codex round-3 finding 4 caught:** revision 3 stated this rule as policy prose only. The `claims` schema stored a generic `evidence_ref`/citation with no typed evidence origin, no predicate id or version, no record of the actual field values compared, and no incident binding — nothing in the data model actually *stopped* a `knowledge_item` reference from backing a VERIFIED badge. The firewall was a promise, not a boundary. Claude/Opus accepted this finding without defense.
+
+**What Codex round-4 finding 4 then caught (accepted in full — strongest catch of that round):** revision 4's fix checked only `result = true` and matching `incident_id` — not enough. A legitimate `SPAWNED` `verifier_execution` for the real edge A→B could be referenced by a *different* same-incident claim (a different edge, or even a different predicate) to obtain a verified badge it never actually earned. Matching `incident_id` alone does not bind an execution to the specific claim it verifies.
+
+**Fix — the firewall is now structural at two independent layers, function AND trigger:**
+- A new immutable **`verifier_executions` table** (full schema, §6) records, per attempted predicate check: `incident_id`, `predicate_id` + `predicate_version`, the specific input event ids and the actual field values compared, the boolean result, and the current-log provenance (which parsed log store row(s) the check read). Rows are never edited after insert.
+- **A predicate badge may only be assigned by reference to a successful `verifier_execution` row that is the exact canonical execution for that claim**, checked atomically at badge assignment: matching `incident_id`; `verifier_executions.predicate_id` equal to `claims.predicate_type`; `predicate_version` recorded; **`input_event_ids` exactly equal, as an ordered pair, to that claim's own source and target event ids**; current-log provenance present; and `result = true`. Each `verifier_execution` is bound to its canonical claim/edge **at creation time**, not only re-checked at badge-assignment time.
+- **Enforced at two layers, not one.** A **single badge-assignment function** (`assign_predicate_badge(claim_id, verifier_execution_id)`) performs the checks above. Alongside it, a **SQLite trigger** — a `BEFORE UPDATE`/`BEFORE INSERT` trigger on `claims` — independently rejects any row that sets a verified predicate badge without satisfying the same equality checks. **Revision 4's rationale for function-only enforcement ("cheaper to build and test at MVP scale... since the MVP has exactly one write path") is corrected here, not carried forward:** that reasoning no longer holds once the equality check is this specific, because the trigger is a few lines of SQL, and function-only enforcement means any direct SQL write, migration script, or incidental future writer bypasses the firewall entirely with no second line of defense. §3 and §6 now say **trigger + function**, and this is the current, load-bearing statement of the rule — the function-only design in revision 4 was real, but is superseded here.
+- **Precedent/`knowledge_item` references live in a separate, hypothesis-only field** on the claim (`hypothesis_precedent_ref`) that neither the badge-assignment function nor the trigger reads — physically and structurally distinct from the fields either enforcement layer is allowed to consult. A `knowledge_item` has no path to a verified badge: it cannot satisfy the `predicate_id`/`input_event_ids` equality checks the trigger and function both enforce, because it was never a `verifier_execution` row to begin with.
+- **Predicate versioning, previously deferred (§3 old deferred list), is un-deferred to the extent this structural boundary needs it**: each predicate implementation carries a version string, `verifier_executions.predicate_version` records which version ran, and a predicate's confounded-negative fixture suite (§2.1) is re-run whenever its version changes.
+
+**Cheap guards, recorded alongside the firewall (cost little, keep them from day one):**
+- **Immutable provenance** on every learned item — who/what proposed it, when, from which incident, never edited in place.
+- **Precedents scoped** to event schema, log source, and platform — a precedent from a Sysmon Windows incident does not silently apply to a Linux auditd incident.
+- **Contradictory resolutions coexist** — if two adjudications disagree, both are kept and confidence is *lowered*, never overwritten to force agreement.
+- **Every predicate badge cites its `verifier_execution` row** (predicate id + version, which fields matched) — never a bare "matches a known pattern." This is now enforced structurally, not just stated (above).
+- **The UI shows provenance** — whether a badge's evidence came from the current incident's logs or from historical precedent guidance, always visibly distinguished.
+- **A single flag disables all learned knowledge during evaluation.** This also enables an honest demo: run the pipeline once with precedents disabled and once with them enabled, verification rules held identical both times, scored against the same frozen edge graph (§6, §8) in both modes — see §8 Phase 1 for the four counts this now reports (newly-proposed-correct / newly-proposed-incorrect / verified / unresolved), replacing the single coverage-percentage comparison Codex round-3 finding 3 correctly called gameable.
+
+### Causal Gaps / Aporia — escalation and learning loop (MVP-scaled design)
+
+Full detail lives in §6 (schema) — this is the shape and what's deliberately left out.
+
+- **`causal_gaps` table** (schema, §6) is the operational record of one unverifiable causal claim: what was claimed, which two events it links, why verification failed, who/what proposed it, and its adjudication lifecycle. At MVP scope, the record of each deterministic relational-evidence check attempted is stored as a **JSON column on this table** — not a separate table (see deferred list, §6).
+- **`knowledge_items` table** (schema, §6) holds adjudication-derived RAG knowledge, separately, because operational records (`causal_gaps`) and reusable knowledge have different lifecycles — a gap gets closed once; a precedent may get retrieved hundreds of times. Vectors live here, mapped into a `sqlite-vec` virtual table by integer row id — **never on `causal_gaps` itself.**
+- **Ticketing, MVP-scaled:** one stable `AdjudicationTicket` payload shape, plus a single emitter function that writes a deterministic JSON file per ticket into a local outbox directory (optionally rendering a Markdown view for the demo). The database stays authoritative — the outbox is a projection, not a second source of truth. **No provider interface, no OAuth, no bidirectional sync at MVP scope.** ServiceNow integration is an explicit **later version**: when it arrives, the same `AdjudicationTicket` payload maps onto a ServiceNow record, and its `sys_id` becomes the ticket's external reference.
+- **Learning write-back, MVP-scaled:** a resolved gap becomes a provenanced structured **case precedent** — original event references, normalised event features, the outcome, the human's rationale and cited evidence, incident/analyst/timestamp/model+verifier version stamps, explicit scope limits (host, event types), plus an embedding of a concise derived note. **A human decision that "A caused B" is provenance about one incident, not automatically a reusable fact about others** — the scope limits and the badge firewall (above) are what keep it from being treated as one.
+
+**Explicitly deferred (recorded so the trigger for adding each is legible later, not forgotten):**
+- A `causal_gap_events` junction table — add when a single gap needs to span **3+ events** (MVP's two-event `source_event_id`/`target_event_id` columns are sufficient below that).
+- `causal_gap_checks` as its own table — add when there's a real need to **query across** individual checks, not just read them back per-gap (the JSON column is sufficient until then).
+- A four-state `learning_eligibility` field.
+- User-defined or automatically-learned verifier predicates, and predicate **authoring/promotion** (i.e. new predicates beyond the fixed four in §2.1). **Predicate versioning itself is no longer deferred** — see the Badge Firewall subsection above and §6's `verifier_executions` table; it is now un-deferred to the extent the structural firewall needs it.
+- Workflow history, assignments, SLAs, multi-user controls on tickets.
+- **Composition rules** for chaining predicates into higher-level causal claims (§2.1) — none exist at MVP scope; every composite causal claim is an Aporia by construction until a composition rule is authored.
+
+### Code-review add-on toolchain (separate feature, §8 Phase 3 — not required for MVP Done)
+
+Targets AI-generated glue scripts / n8n flows / agent tooling ("vibe-coded automation"):
+- **Semgrep** — injection, unsafe eval, over-broad scopes.
+- **gitleaks** — hardcoded credentials (likely the highest-yield single tool against this artifact class).
+- **osv-scanner** — dependency vulnerabilities.
+
+### Explicitly deferred tools (recorded, not forgotten)
+
+`plaso`/`log2timeline`, `MISP`, `YARA`, `Chainsaw`, `Zircolite`, `checkov`/`kics`, `bandit`. None are needed at MVP scope; each is a reasonable candidate to revisit if/when the project moves toward production (§9).
+
+### Labeled evaluation data (public — no target org needed)
+
+**Dataset choice is Decision B in §7.5 — CONFIRMED by Nithin (2026-07-29).**
+
+- **OTRF Security-Datasets** (`https://github.com/OTRF/Security-Datasets`) — host+network logs mapped to ATT&CK techniques, multi-stage, Sysmon-rich (has `ProcessGuid`/`ParentProcessGuid`, required for the relational-evidence rule — §2.1), **critically includes benign background events alongside attack events**, so false positives in the reconstruction are measurable, not just true positives. **Confirmed as both the Phase 1 feasibility-artifact incident AND the source of a second, frozen, single-shot-scored sibling incident** (renamed from "held-out"/"never-inspected" in revision 5 — see §7.5 Decision B for what this discipline actually is and its stated residual bias).
+  - **Real incident identifiers, verified live 2026-07-29 (revision 6) — Decision B is now concrete, not a category choice.** Frozen **dev** incident: `datasets/compound/apt29/day1/apt29_evals_day1_manual.zip` → `apt29_evals_day1_manual_2020-05-01225525.json` (196,081 total events; 143,884 from `Microsoft-Windows-Sysmon/Operational`; Sysmon EID 1 = 447, EID 3 = 1,229, EID 7 = 20,259, EID 11 = 1,649; four hosts `SCRANTON`/`NASHUA`/`NEWYORK`/`UTICA`, all `.dmevals.local`). Frozen **single-shot-scored** incident: `datasets/compound/apt29/day2/apt29_evals_day2_manual.zip` → `apt29_evals_day2_manual_2020-05-02035409.json` (587,286 total events; Sysmon EID 1 = 581, EID 3 = 2,186, EID 7 = 32,012, EID 11 = 5,479; same four hosts). Both are **MITRE ATT&CK Evaluations Round 2 (APT29 emulation)**. An emulation plan ships in the repo at `datasets/compound/apt29/emulationplans/apt29.xlsx` — this is the per-step ATT&CK reference for the separate ATT&CK-recall metric, **not** a causal-edge key. **The data is fetched at Phase 0 time, lives outside the repo (or gitignored), and is never committed** — roughly 13MB zipped and 367MB extracted for day1 alone.
+- **EVTX-ATTACK-SAMPLES** (`https://github.com/sbousseaden/EVTX-ATTACK-SAMPLES`) — Windows/Sysmon EVTX samples grouped by ATT&CK tactic and technique; smallest and fastest to stand up, but little causal chain, so on its own it can't prove the RCA thesis. **Confirmed as the Phase 0 smoke test only** — confirms Hayabusa runs, parsing works, the model responds, a badge appears — and never appears in the demo (§7.5 Decision B, §8 Phase 0).
+- **Splunk BOTS v1/v2/v3** (`https://github.com/splunk/botsv3`) — full incident datasets with a **questions-and-answers ground-truth key** (CC0-based licence); richest scenario and has a real answer key, but Splunk-shaped and heavy to normalise, and its Q&A key is not a causal-chain annotation. Kept as a **secondary scoring source**, not the primary incident, per §7.5 Decision B — its ATT&CK/Q&A recall is scored separately from the edge-level metrics (§8), never merged with them (Codex round-3 finding 2).
+- **Open lead, not yet verified — do not cite a number from it:** arXiv 2606.18190, "Multi-Source Cybersecurity Logs: An ATT&CK-Labeled Dataset and SLM Evaluation." Possibly the source of the disputed ~93% figure debated in the Codex review; its results section has not been read. Recorded as a lead to check before any future revision leans on it, not as a citable source here.
+
+**Hard technical constraint — verified satisfied, not merely assumed (revision 6).** The chosen dataset **must include Sysmon** logging. Plain Windows Security EVTX often lacks `ProcessGuid`/`ParentProcessGuid`; without those fields the relational-evidence rule (§2.1) has nothing to check, and every causal edge in the incident degrades to unverifiable by construction, not by honest failure. Earlier revisions stated this as a requirement on whatever incident got picked; **as of revision 6 it is a measured fact about the actual chosen incidents above** — both the frozen dev incident and the frozen single-shot-scored incident were parsed live and their Sysmon event-ID counts confirmed present in the numbers cited above. This is why OTRF (Sysmon-rich) is the confirmed source for both, not EVTX-ATTACK-SAMPLES or vanilla Security-log exports.
+
+**Why this section exists separately from §8:** these are verified facts checked live this session (tool existence, licensing, dataset shape) — they should not be re-derived by a future session; treat this list as settled input to §8 Phase 1, not something to re-research.
+
+### How a reconstruction flows (concrete walkthrough)
+
+1. Load one labeled incident's logs into the parsed log store.
+2. Hayabusa runs Sigma rules over it, emits an ordered, technique-tagged timeline.
+3. The planner reads the timeline and decides what else needs checking (a CVE mention? an ATT&CK ID the timeline didn't already tag? a specific log-fact worth re-querying?).
+4. Deterministic evidence assembly runs those checks (NVD mirror, mitreattack-python, log-store re-query) — no model call.
+5. The adjudicator (Foundation-Sec-8B by default) writes the causal-chain narrative as a sequence of discrete claims, grounded only in the timeline + assembled evidence, with citations.
+6. Each claim in that narrative is run back through the matching tool from the table above and badged verified / refuted / unverifiable.
+7. Output: a timeline + badged causal chain. Score it against the incident's ATT&CK labels and (for BOTS) the answer key — this scoring is the feasibility evidence, produced by comparing ARES's output to ground truth, not by ARES judging itself.
 
 ---
 
-## 4. 🔧 BUILD — tech stack and *why* (every choice justified)
-
-Guiding rule: **fewest moving parts, lowest weight, friendliest to a beginner.** Reuse before adding. Native before library. One file before a server.
+## 4. 🔧 BUILD — tech stack and *why*
 
 | Layer | Choice | Why this, not the alternative |
 |---|---|---|
-| **Model runtime** | **Ollama** | One-command local model hosting; hides GPU/Metal/quantization. Beginner-critical. Alternative (raw llama.cpp / vLLM) = far more setup. |
-| **Security model** | **CyberSecQwen-4B** (fallback: Foundation-Sec-8B Q4) | Beats the 8B Cisco model at half the size; ~2.5GB fits 16GB with room to spare. Fallback is a one-command pull if the 4B GGUF import is fiddly. |
-| **Embeddings** | **nomic-embed-text** (via Ollama) | Small, runs in Ollama you already have, good quality. No extra install. |
-| **Code-vuln model** | **Qwen2.5-Coder-7B** (Phase 3 only, on-demand) | Best small coding model (88% HumanEval); loaded only when scanning, unloaded after, so it doesn't compete with the sec model for RAM. |
-| **Vector store** | **sqlite-vec** | Vector search *inside* SQLite. No separate DB server. One file. Backup = copy a file. |
-| **Database** | **SQLite** (one file) | Users, roles, docs, embeddings, alerts, scans — all in one `.db`. Zero server. Perfect for ≤3 users. Postgres would be overkill. |
-| **Backend** | **Python + FastAPI** | Python is the native language of the AI/model ecosystem (Ollama clients, sqlite-vec, embeddings). FastAPI is the modern standard: async, typed, auto-generated API docs, first-class auth deps. |
-| **Auth** | **Session cookie + passlib(bcrypt)**, hand-rolled | 3 users doesn't justify a heavy auth framework — ~40 lines beats a dependency. bcrypt password hashing is non-negotiable (never store plain passwords). |
-| **Frontend** | **Server-rendered Jinja2 + HTMX + Tailwind (CDN) + Alpine.js** | Engineering call, not a skill call: no Node build/bundler, no API-layer duplication, no client state to sync — the server owns state, HTML swaps over the wire. Lightest thing that yields a real dashboard. **Swappable to React/Next if you prefer a SPA** (see Q4, §11); it's a bigger surface for marginal gain here. |
-| **Charts** | **Chart.js** (single file, self-hosted) | Dashboard needs a few graphs (alerts over time, severity mix). One JS file, no framework. |
-| **Packaging/run** | **`uv`** + a `Makefile` / `run.sh` | `uv` = fast, modern Python env manager. One script starts Ollama + the app. |
+| **Model runtime** | **Ollama** | One-command local model hosting; hides GPU/Metal/quantization setup. |
+| **Security model (default)** | **Foundation-Sec-8B** (Cisco Foundation AI) | Best-documented, most mature security SLM per research #01 (see §5 for the caveat on what "best-documented" does and does not claim); ~5–6GB quantized fits the M4's 16GB. |
+| **Security model (low-VRAM fallback)** | **CyberSecQwen-4B** | Roughly Foundation-Sec-8B tier on CTI-MCQ/CTI-RCM at half the size, per its own model card. Narrower specialist (CTI Q&A + CVE→CWE), not a drop-in general adjudicator — 2021 data anchor, no RL safety alignment. |
+| **Embeddings** | **nomic-embed-text** (via Ollama) | Small, already-available, good quality. |
+| **Timeline / Sigma engine** | **Hayabusa** | Single Rust binary, runs Sigma rules over EVTX, emits a timeline directly — one tool doing both the technique-check and the timeline-construction jobs (§3). |
+| **CVE verification** | **Local NVD JSON feed mirror** | Confirms CVE IDs exist, pulls real CVSS/affected-product data offline. |
+| **ATT&CK verification** | **mitreattack-python + ATT&CK STIX bundle** | Validates technique IDs/tactic mappings offline. |
+| **Vector store** | **sqlite-vec** | Vector search *inside* SQLite. No separate DB server. |
+| **Database** | **SQLite** (one file) | Log store, chunks/embeddings, claims, badges — one `.db`. |
+| **Code-in-loop verification** | **semgrep** | Confirms model-claimed code vulnerabilities when a code artifact is part of an incident's evidence. |
+| **Code-review add-on** (§8 Phase 3, optional) | **semgrep + gitleaks + osv-scanner** | Purpose-built for scanning AI-generated glue scripts/automations — see §2C. |
+| **Backend** | **Python + FastAPI** | Python is the native language of the tools above (Ollama clients, sqlite-vec, mitreattack-python). FastAPI serves the dashboard and report-export endpoints (§8 Phase 2, required per revision 7's Q3 closure). **Phase 1's own Done criterion still does not require a web backend** — a script producing a scored timeline is sufficient for the feasibility spike itself; FastAPI is what Phase 2 is built on, and Phase 2 is now required for the MVP as a whole, per the sequencing guard in §8. |
+| **Presentation — dashboard (Phase 2, required, revision 7)** | **Server-rendered Jinja2 + HTMX + Tailwind** | Dashboard view: reconstructed timeline, each claim's badge (§2.1 relation-predicate names) or Aporia status, causal gaps as first-class items, Phase 1's three metrics as run results. No longer optional/stretch — see §8 Phase 2. |
+| **Report export (Phase 2, required, revision 7)** | **Jinja2 (Markdown + HTML) + `openpyxl` (Excel)**, one structured report object rendered three ways | Markdown and HTML reuse the existing Jinja2 dependency; **`openpyxl` is the one new dependency this revision introduces** — added specifically for `.xlsx` export. Do not build three independent exporters with divergent content — one report model, three renderers. |
+| **Packaging/run** | **`uv`** + a `run.sh` | Fast Python env manager; one script starts the pipeline. |
 
-**What we deliberately are NOT using (and why):** React/Next.js (build-tool overhead you don't need), Docker (extra layer; native `uv` + Ollama is simpler on one Mac — revisit if we ever deploy off your laptop), Chroma/Pinecone (separate server; sqlite-vec replaces it), a message queue / Celery (no background-job scale here), Postgres (SQLite is enough for 3 users).
+**What we deliberately are NOT using at MVP scope (revisit only if production is pursued, §9):** auth framework, RBAC, a hardened web app, Postgres, Docker, a message queue, live SIEM connectors, `plaso`/MISP/YARA/Chainsaw/Zircolite/checkov/bandit (§3), OCSF/VEX export formats.
 
 ---
 
-## 5. 🔧 BUILD — models, concretely (with the M4/16GB reality)
+## 5. 🔧 BUILD — models, concretely (M4/16GB reality)
 
-**RAM budget on a 16GB Mac:** macOS + browser + your apps eat ~5–6GB. That leaves **~10GB** for us.
+**RAM budget:** macOS + apps eat ~5–6GB, leaving ~10GB for us.
 
 | Model | Role | Size (Q4) | Loaded when |
 |---|---|---|---|
-| CyberSecQwen-4B | Q&A + triage brain | ~2.5–3GB | Held live (default model) |
-| nomic-embed-text | Make embeddings | ~0.3GB | Loaded on ingest/query |
-| Qwen2.5-Coder-7B | Code-vuln scanning | ~4.5GB | On-demand; Ollama unloads sec model first |
+| Foundation-Sec-8B | Adjudicator (default) | ~5–6GB | Held live during MVP runs |
+| CyberSecQwen-4B | Adjudicator (low-VRAM fallback) | ~2.5–3GB | Held live instead of Foundation-Sec-8B, if selected |
+| nomic-embed-text | Embeddings | ~0.3GB | Loaded on ingest/query |
+| Qwen2.5-Coder-7B | Code-review add-on only (§8 Phase 3) | ~4.5GB | On-demand, only if the add-on is built |
 
-**Key constraint:** we can hold **one big model live at a time.** The sec model stays hot; the coder model swaps in when you run a scan (a few seconds' load), then releases. This is fine for ≤3 non-concurrent users; it would *not* scale to a busy MSSP (see §11).
+**Why Foundation-Sec-8B by default:** research #01 found it the most mature, best-benchmarked local security SLM at 8B, matching/beating a 70B model on CTIBench CTI tasks, and it fits the M4 with room to spare. **Neither model is being asked to be an accurate oracle** — the MVP's premise (§2) is precisely that this doesn't need to hold for the pipeline to be worth building; the verification layer is what carries the trust, not the model's raw benchmark scores.
 
-**Model install path (exact commands at build time):**
-- Foundation-Sec-8B fallback: `ollama pull <registry>/Foundation-Sec-8B`.
-- CyberSecQwen-4B: pull the GGUF from Hugging Face (`athena129/CyberSecQwen-4B`), 3-line `Modelfile`, `ollama create cybersecqwen`. One-time, ~10 min.
+**Install path:** `ollama pull`/Modelfile import for Foundation-Sec-8B (`fdtn-ai/Foundation-Sec-8B`); Hugging Face GGUF + 3-line Modelfile for CyberSecQwen-4B (`athena129/CyberSecQwen-4B`) if the fallback profile is used. Both require the RAG + verification pipeline in §3 regardless of profile — neither should ever answer from parametric memory alone.
 
----
-
-## 6. 🔧 BUILD — data model (what lives in the one SQLite file)
-
-Plain-English tables (exact columns finalized in Phase 1):
-
-- **users** — id, email, password_hash (bcrypt), role, created_at.
-- **roles / permissions** — Admin (manage users + everything), Analyst (ask, triage, scan, ingest docs), Viewer (read past results only).
-- **documents** — id, title, source, raw_text, ingested_at. (Your runbooks/CVEs/policies.)
-- **chunks** — id, document_id, chunk_text, embedding (via sqlite-vec). (Documents split into searchable pieces.)
-- **conversations / messages** — chat history per user (question, answer, cited chunk ids).
-- **alerts** — id, raw_alert, model_summary, severity, status, created_by, created_at. (Phase 2.)
-- **scans** — id, filename, language, findings(json), created_by, created_at. (Phase 3.)
-- **audit_log** — who did what, when. (A security tool must log its own use.)
-
-One file. Backup = copy the file. Reset = delete the file.
+**Model-pick question closed (revision 7, §14 Q2) — the two-model split above is confirmed as-written, not reopened.** Nithin confirmed the split he intended all along: Foundation-Sec-8B for SecOps/RCA (default), Qwen2.5-Coder-7B for the code-review add-on only (§8 Phase 3), CyberSecQwen-4B as a low-RAM fallback for the **SecOps slot specifically** — never a competing pick against the coder model, which was never in contention. **Made explicit for the first time here — §5 previously only implied it:** Foundation-Sec-8B (~5–6GB) and Qwen2.5-Coder-7B (~4.5GB) sum to **~10.5GB, against the ~10GB usable budget** on a 16GB M4 (see the RAM budget line above) — **they cannot both be resident simultaneously.** Model loading across the RCA core and the code-review add-on is **strictly sequential**: the SecOps model must unload before the coder model loads, and vice versa. **Operational consequence: there is no live model switching mid-demo without a visible unload/load pause.** If Phase 3's code-review add-on is demoed in the same session as Phase 1's RCA demo, that pause must be **scripted into the demo flow** (announced, timed, explained) rather than discovered live on stage. Note, but do not act on: the CyberSecQwen-4B fallback profile (~2.5–3GB) plus Qwen2.5-Coder-7B (~4.5GB) ≈ 7.5GB **would** fit both concurrently — a second, previously unstated reason the fallback profile might one day be chosen — but this does **not** change the default; Foundation-Sec-8B remains the default per the table above, and the fallback is used only if RAM pressure actually materialises.
 
 ---
 
-## 7. 🔧 BUILD — auth & RBAC design (kept minimal on purpose)
+## 6. 🔧 BUILD — data model & DB location
 
-- **3 roles:** Admin, Analyst, Viewer (defined above). No custom permission editor — 3 users don't need it.
-- **Login:** email + password, hashed with bcrypt, session cookie (HttpOnly, SameSite=Lax, Secure when not localhost).
-- **First-run:** create the first Admin via a one-time setup screen or CLI command.
-- **Enforcement:** a FastAPI dependency checks the session's role on every protected endpoint. Deny by default.
-- **Not doing (yet):** OAuth/SSO, password reset email flows, 2FA. Noted as future hardening in §11. For 3 internal users on localhost, a solid session login is proportionate.
+One `.db` file, `sqlite-vec` loaded as an extension into it — relational data and vector search co-located so backup/restore/reset is always "copy/delete one file."
 
----
+- **incidents** — id, dataset_source (OTRF / EVTX-ATTACK-SAMPLES / BOTS), raw_log_path, ground_truth_labels (ATT&CK IDs / BOTS answer-key reference).
+- **log_events** — id, incident_id, timestamp, raw_event, parsed_fields. (The log store the pipeline re-queries for log-fact claims.)
+- **chunks** — id, document_id, chunk_text, embedding (via sqlite-vec). (CTI docs/runbooks used for retrieval.)
+- **timeline_entries** — id, incident_id, timestamp, technique_tag (from Hayabusa), source_event_id.
+- **claims** — id, incident_id, claim_type (event existence / chronology / technique detection / identifier validity / identifier applicability / **relational_predicate** / **composite_causal** — plus code for the in-loop code-claim check; the old single "causation" type is split per §2.1), predicate_type (nullable; one of `SPAWNED` / `SAME_SESSION` / `WROTE_PATH_BEFORE_EXECUTION` / `PROCESS_OPENED_CONNECTION`, only set when claim_type = relational_predicate), source_event_id, target_event_id (the claim's own source/target event ids — this ordered pair is what a `verifier_execution`'s `input_event_ids` must exactly equal before that execution can badge this specific claim, Codex round-4 finding 4), claim_text, badge (verified / refuted / unverifiable — a `relational_predicate` claim's badge, when verified, is that predicate's own name, e.g. `SPAWNED`, not a generic "verified"), **verifier_execution_id** (nullable FK to `verifier_executions.id` — **required, non-null, for any relational_predicate claim badged verified**; both the badge-assignment function and the `claims` trigger refuse to set a verified badge unless the referenced execution's `incident_id`, `predicate_id` (= this claim's `predicate_type`), `predicate_version`, and `input_event_ids` (exact ordered-pair match to `source_event_id`/`target_event_id`) all check out and `result = true`, §3), **hypothesis_precedent_ref** (nullable FK to `knowledge_items.id` — hypothesis-only, physically separate from `verifier_execution_id`, and read by neither the badge-assignment function nor the trigger, §3), evidence_ref (which tool/query produced non-relational badges), citation (source chunk/event). `composite_causal` claims are never badged verified at MVP scope (no composition rule exists, §2.1) — they resolve to `unverifiable` and route to `causal_gaps`.
+- **verifier_executions** (Codex round-3 finding 4, tightened by round-4 finding 4) — id, incident_id, predicate_id, predicate_version, input_event_ids (JSON array — an **ordered pair**, `[source_event_id, target_event_id]`, matching a single canonical `claims` row **from the moment this execution is created**, not just checked later at badge time), evaluated_fields (JSON object of the actual field values compared, e.g. `{"child.ParentProcessGuid": "...", "parent.ProcessGuid": "...", "child.Hostname": "...", "parent.Hostname": "..."}` — now includes the host-scoping field per §2.1, field-named `Hostname` in this dataset, revision 6), result (bool), log_provenance (which parsed `log_events` rows were read), executed_at, run_id (which pipeline run produced it). **Immutable — rows are insert-only, never updated.** This is the structural half of the badge firewall: a verified predicate badge requires a row here whose `incident_id`, `predicate_id` (= the claim's `predicate_type`), `predicate_version`, and `input_event_ids` (exact ordered-pair match to the claim's own `source_event_id`/`target_event_id`) all match, with `result = true` — enforced independently by **both** the badge-assignment function **and** a `claims` table trigger (§3).
+- **causal_gaps** (Aporia, §2.1/§3) — id, incident_id, claim_id (FK to the originating `claims` row, relational_predicate or composite_causal), claim_text, relation_type (spawned / same_session / wrote_then_executed / process_opened_connection / composite_unresolved / other — updated to match the four named predicates plus composites, §2.1), source_event_id, target_event_id, status (open / adjudicated / closed), resolution (confirmed / refuted / insufficient_evidence), verification_failure_code (temporal_only / missing_join_field / conflicting_fields / unsupported_relation / no_composition_rule / **well_known_session** — new in revision 6, §2.1, set when the only shared `LogonId` is a well-known session (`0x3e7`/`0x3e4`/`0x3e5`)), verification_failure_detail, proposed_by (model name+version+run id), created_at, adjudicated_at, adjudicated_by, resolution_rationale, resolution_evidence_json, ticket_ref. The record of each deterministic relational-evidence check attempted is stored as a **JSON column on this table** at MVP scope (see §3 deferred list for when this splits out) — this is a summary/read-back convenience distinct from the authoritative, immutable `verifier_executions` rows above.
+- **knowledge_items** — adjudication-derived RAG knowledge (case precedents, §3), mapped into a **`sqlite-vec` virtual table by integer row id**. Deliberately a separate table from `causal_gaps` — an operational record and a piece of reusable knowledge have different lifecycles (a gap closes once; a precedent may be retrieved many times). **Vectors are never stored on `causal_gaps` itself.** Referenced only from `claims.hypothesis_precedent_ref`, never from `claims.verifier_execution_id`.
+- **scan_findings** (code-review add-on only, §8 Phase 3) — id, filename, tool (semgrep/gitleaks/osv-scanner), finding, severity, CWE_id.
 
-## 8. 🔧 BUILD — phased delivery (vertical slices)
+### Frozen edge-level causal ground-truth artifact (Codex round-3 finding 2; spec tightened by round-4 finding 2a/2b; incident identifiers made concrete by revision 6's measurement, §0.5)
 
-Each phase is a **vertical slice** — a thin but *complete* path from dashboard → backend → model → back. You get something usable at the end of every phase. We build test-first (per your global rules) where it counts (RAG retrieval, auth, scan parsing).
+Neither `causal_gaps` nor `verifier_executions` is a *ground-truth* artifact — both record what ARES itself proposed and checked, not what actually happened. OTRF's ATT&CK-technique mapping is not a causal-chain annotation, so as of revision 3 there was **no data ARES's causal-edge metrics could be scored against**, making §7.5 Decision A's "zero false-verified" and "50–60% coverage" numbers uncomputable, not merely unmeasured. Fixed by a new, hand-authored artifact. **Codex round-4 finding 2(a), accepted:** the spec below was still underspecified enough that two honest authors could produce different denominators and verdicts from the same logs — every bullet below closes one of the ambiguities Codex named.
 
-### Phase 0 — Foundations & learning (½–1 day)
-- Install Ollama, `uv`. Pull `nomic-embed-text` + the sec model. Confirm they answer.
-- Bare FastAPI "hello" + one HTMX page rendering. Confirms the whole toolchain runs on your Mac.
-- **Deliverable:** you can chat with the raw local model in a browser box. No RAG yet.
+- **What it is:** a versioned file (proposed home: `eval/ground_truth/apt29-day1.edges.yaml` for the frozen dev incident, `eval/ground_truth/apt29-day2.edges.yaml` for the frozen single-shot-scored incident — real identifiers, revision 6, replacing the earlier `<incident_id>` placeholder; source data is `datasets/compound/apt29/day1/apt29_evals_day1_manual.zip` → `apt29_evals_day1_manual_2020-05-01225525.json` and `datasets/compound/apt29/day2/apt29_evals_day2_manual.zip` → `apt29_evals_day2_manual_2020-05-02035409.json` respectively, both OTRF ATT&CK Evaluations Round 2 / APT29) enumerating every causal edge Nithin, reading the raw OTRF logs directly, judges to be true for that incident — **authored before ARES is ever run on that incident.**
+- **Edge universe and eligibility (new, finding 2a).** The artifact states explicitly which logged events are eligible to be an edge endpoint at all — not every `log_events` row qualifies. Eligibility is scoped to events a predicate contract in §2.1 could in principle relate (Event IDs 1, 3, 7, 11 at MVP scope); an event type no predicate ever touches (e.g. a benign registry-read event with no relational field) is out of the edge universe entirely, not silently a zero-recall miss.
+- **Event identity and granularity (new, finding 2a).** The artifact states how one real-world action maps to one or more log records — e.g. a single process launch may emit both an Event ID 1 and, on some Sysmon configs, a companion Event ID 5 (ProcessTerminate) later; the artifact names which record is the canonical "the action happened" record for edge-authoring purposes, and states the **equivalence grammar** for alternates (which record ids are interchangeable references to the same real-world action, and which are not).
+- **What each edge entry pins down:** edge identity (a stable id), direction (source event → target event), relation type (using the §2.1 predicate vocabulary — `SPAWNED` / `SAME_SESSION` / `WROTE_PATH_BEFORE_EXECUTION` / `PROCESS_OPENED_CONNECTION`), acceptable equivalences (per the event-identity grammar above), and edges explicitly marked **unobservable** in the available telemetry.
+- **Composite edges — resolved in favour of §2.1 (finding 2b, accepted; corrects a direct contradiction).** An earlier draft of this spec allowed a labeled composite edge "with its own stated composition." That directly contradicted §2.1, which states no composition rule exists at MVP scope and every composite is an Aporia by construction. **Resolved in favour of §2.1: a composite edge is recorded in the artifact only as an unscored annotation** (context for a human reader — e.g. "these three predicate-level edges together tell the phishing→macro→LOLBin→dump story") **and is never a scoreable key entry.** No metric in §8 is computed against a composite entry.
+- **The observable-edge denominator (new, finding 2a — must match §6/§8 wording exactly).** The scoreable denominator for every edge-level metric in §8 is the **observable true-edge set**: frozen true edges in this artifact, minus any marked unobservable. This wording is used identically in this section and in §8 — an edge the available telemetry cannot show never penalizes the pipeline, but it also never counts as proposed, verified, or missed; it is simply excluded from the denominator.
+- **Negative/confounder edges, explicit (new, finding 2a).** The artifact separately enumerates pairs of events that superficially look related (share a `LogonId`, share a path, are temporally adjacent) but are **not** a true edge — the same class of case as §2.1's confounded-negative predicate fixtures, but at the artifact level. These negative entries are what verification precision is actually scored against when the pipeline wrongly badges one of them.
+- **Deterministic prediction-to-key matching algorithm (new, finding 2a — without this the metrics are still not computable).** A pipeline-emitted edge is matched to a key edge by: (1) resolve both the emitted edge's and the key edge's endpoints to their canonical event identity per the equivalence grammar above; (2) match if, and only if, the resolved (source, target, relation_type) triple is identical, host-scoped per §2.1 (`Hostname` must also match); (3) deduplicate before scoring — if the pipeline emits the same resolved (source, target, relation_type) triple more than once (e.g. re-proposed after a retry), it counts once toward proposal/verification, never multiple times; (4) an emitted edge that does not resolve to any key entry, positive or negative, is out-of-universe and excluded from the denominator per the eligibility rule above, not counted as a false positive by default — unless it resolves to a **negative/confounder** entry, in which case it *is* counted against verification precision.
+- **Two artifacts required, per §7.5 Decision B:** one for the frozen **dev** incident (may be inspected and iterated against during Phase 1 build), one for the **frozen, single-shot-scored** incident (renamed from "held-out" — see §7.5; authored the same way, but the single-shot-scoring discipline applies to that incident's *logs and ARES's output on them*, not to authoring its ground-truth file, which requires only the raw logs, not a pipeline run).
+- **Discipline:** once the frozen incident's first (and only) scoring run happens, its artifact is **never edited** — no post-hoc "we meant that edge differently." A mistake found after scoring is recorded as a known limitation of the artifact, not silently corrected.
+- **Sequencing:** this artifact must exist and be frozen **before** any Phase 1 scoring run — see §8, new Phase 1a.
+- **Separate from ATT&CK technique recall:** the OTRF-label-based ATT&CK technique recall metric stays a distinct, separately reported number (§8) — it is not merged with, and does not substitute for, the edge-level metrics this artifact makes possible.
+- **Owner effort, stated honestly:** this is added work for Nithin — hours, one incident at a time, a few dozen edges per incident, by hand, from raw logs, now including the eligibility/equivalence/negative-edge/matching-algorithm authoring above. Decision A's integrity and coverage numbers are literally unmeasurable without it (§7.5).
 
-### Phase 1 — Threat-intel Q&A (RAG) + auth + dashboard shell (core phase)
-- Login + 3 roles. Dashboard shell (nav, layout).
-- Ingest documents → chunk → embed → store in sqlite-vec.
-- Ask a question → retrieve → answer with cited sources.
-- **Deliverable:** log in, upload your runbooks, ask questions, get grounded answers. This is the backbone; Phases 2–3 reuse this engine.
+**Deferred from this schema, with the trigger for adding each** (full rationale in §3): a `causal_gap_events` junction table (add when a gap spans 3+ events), `causal_gap_checks` as its own table (add when cross-check querying is needed), a four-state `learning_eligibility` field, user-defined/learned verifier predicates and their authoring/promotion (predicate *versioning* is no longer deferred — see `verifier_executions` above and §3), ticket workflow history/assignments/SLA/multi-user controls, composition rules for composite causal claims (§2.1).
 
-### Phase 2 — Alert / log triage
-- Paste/upload an alert or log. Model summarizes, rates severity, suggests actions.
-- Alerts saved, listed, filterable; dashboard charts (alerts over time, severity mix).
-- **Deliverable:** a working SOC-triage view.
-
-### Phase 3 — Code vulnerability scanning
-- Paste/upload code or a file. Load Qwen2.5-Coder-7B on demand, prompt it for vulnerabilities, parse findings (severity, line, explanation, fix).
-- Optionally cross-check with a fast static tool (e.g. `semgrep`, already on your machine) to reduce hallucinated findings — model *explains*, static tool *confirms*.
-- **Deliverable:** upload code, get an explained vulnerability report.
-
-### Phase 4 — Polish & hardening
-- Audit log view, backups, rate limits, prompt-injection hardening (§9), docs, one-command start.
-
-*(Later / out of first scope: multi-tenant, fine-tuning, more models — §11.)*
+**Default location:** `./data/ares.db`, relative to project root, gitignored. `ARES_DB_PATH` env var override kept as a config hook, though at MVP scope there is no deployment target beyond the dev machine — no production requirement drives this decision at this scope. The frozen ground-truth artifacts (above) live outside the DB, under version control, precisely so they survive a `./data/ares.db` reset/rebuild untouched.
 
 ---
 
-## 9. 🔒 Security of the tool itself (it's a security product — it must be secure)
+## 7. 🔧 BUILD — auth & RBAC (deferred, not built, at MVP scope)
 
-Because Prahari ingests **untrusted content** (documents, logs, code) and feeds it to a model, and it's a security tool, we bake in:
-
-- **Prompt-injection defense.** Retrieved/pasted content is wrapped and clearly delimited in the prompt; system instructions assert that document content is *data, not commands*. We never let model output trigger actions automatically.
-- **Code-scan sandboxing.** Uploaded code is **never executed** — only read as text and analyzed. No `eval`, no running the sample.
-- **Local-only by default.** Binds to `127.0.0.1`. Not exposed to the network unless you deliberately change it (and then: TLS + real auth review).
-- **Secrets.** No API keys needed (all local). Session secret + first-admin password handled via env/`.env` (gitignored), never committed.
-- **Password hashing** with bcrypt; **deny-by-default** RBAC; **audit log** of all actions.
-- **Input limits.** Max upload size, max prompt length — prevents memory blowups on a 16GB box.
-- **Dependency hygiene.** Few dependencies (ponytail: less code = less attack surface); pin versions.
+Revision 1 specified a 3-role (Admin/Analyst/Viewer) login system. **At MVP scope this is not built.** The MVP is a single-operator run against public dataset(s), not a multi-user deployment. Auth, RBAC, session handling, and a real login flow are recorded here as **deferred to production** (§9) — this section is kept as a placeholder pointing there, not as an active spec for this revision's build.
 
 ---
 
-## 10. 📚 LEARN — the SEC-OPS learning path (the real gap)
+## 7.5. MVP-only decisions (revisit before production) ⚠️
 
-The stack you can pick up as we code. The **domain** is what to front-load. Priority order — the tool's quality depends on you grasping these:
+**Both of these are MVP-only calls, deliberately lenient, and crucial to revisit before any production build.** Nithin asked that both be captured here in full — every option presented, his stated position, the proposed resolution, and an explicit flag on status. **Both are now CONFIRMED by Nithin (2026-07-29).** The full option sets and the 🔒 production-must-reinstate notes are kept in full below even though decided — that record is what keeps the MVP's leniency legible for whenever a production track opens.
 
-1. **SOC workflow & triage** — re-read §2A. Understand detect→triage→respond and true/false-positive. (1 hr) *Search: "SOC analyst tier 1 triage explained."*
-2. **MITRE ATT&CK** — browse `attack.mitre.org`; click 2–3 techniques (e.g. T1566 Phishing) to see the structure. This is the backbone of good triage output. (1–2 hr)
-3. **CVE + CVSS** — read one CVE end-to-end (try CVE-2024-3094, the xz backdoor) and how its CVSS score is built. (45 min)
-4. **OWASP Top 10 + CWE** — skim the OWASP Top 10 list; look up CWE-89 (SQLi) and CWE-79 (XSS). Grounds Phase 3. (1 hr)
+### Decision A — what counts as FEASIBLE (the pass/fail bar)
+
+This answers Codex round-2 findings 2 and 3 (revision 2 had no defined threshold) and is now further refined by Codex round-3 findings 2 and 3 (no causal ground truth existed to score against; the single "coverage" number was circular and gameable — see §0.5, §6, §8).
+
+**Options presented:**
+1. **Badge precision first** — zero false-verified on the frozen, single-shot-scored incident *(originally presented as "a held-out incident" — renamed throughout in revision 5, see the note under Decision B)* (non-negotiable integrity floor); secondary coverage ≥30%; beat simple-RAG on technique recall.
+2. **Coverage first** — ≥60% of causal edges verified. Flashier demo number, but it pressures loosening the relational-evidence rule — precisely the failure Codex's finding 1 named.
+3. **Comparative only** — beat a Hayabusa-alone baseline and a simple-RAG baseline; no absolute floor.
+4. **Set numbers after a Phase 0 dry run** — honest about genuinely unknown ranges; only safe if the frozen incident's logs and ARES's output on it stay unscored until the pre-registered numbers are set.
+
+**Nithin's position:** debating 1 vs 2 — wants MVP numbers high enough to be broadly accepted, with strictness deferred to production.
+
+**CONFIRMED by Nithin (2026-07-29): both metrics.** (i) An **integrity metric**: zero false-verified causal claims on the frozen, single-shot-scored incident, **non-negotiable**. (ii) A **coverage metric**: target **50–60%**, raised only by implementing *more relational predicate types* (§2.1) — never by loosening what counts as relational evidence. Low coverage means "build another checker," not "lower the bar."
+
+**Revision-4 refinement, not a reopening of the decision (Codex round-3 findings 2/3):** both halves of Decision A require the frozen edge-level causal ground-truth artifact (§6, §8 Phase 1a) to be computable at all — see §8 for the mechanics. And "coverage" is no longer one number: it splits into **proposal recall**, **verification precision** (this is where the zero-false-verified integrity floor lives), and **verified-edge recall** (this is where the 50–60% target attaches). Nithin's confirmed 50–60% figure is unchanged in substance; §8 states precisely which of the three metrics it now measures.
+
+**Revision-5 refinement, not a reopening of the decision (Codex round-4 finding 3):** verification precision is now defined as **FAIL, not undefined, when zero edges are badged** — a pipeline that abstains from badging anything does not get a free pass by having no denominator to fail against. This is stated alongside a partial defense worth recording: abstention was never fully free even before this fix, because a pipeline badging nothing already fails the 50–60% verified-edge recall floor above. §8 also now scores **predicate-badge correctness separately from causal-narrative correctness** — a correct `SAME_SESSION` badge is not credited as a correct causal claim, and the observable-edge denominator (§6) is worded identically here and in §8 so the two sections cannot silently drift apart on what "the frozen true edges" means.
+
+**Revision-6 refinement, not a reopening of the decision — measured ceilings are now known in advance.** Live measurement against the dev incident (§0.5's "Revision 5 → 6" entry, §8 Phase 1) found that the `ProcessGuid`→EID 1 session join underlying `SAME_SESSION` resolves only ~37% of network events, ~77% of file-create events, and ~95% of image-load events, purely as a property of how sparse EID 1 (ProcessCreate) capture is relative to network activity in this corpus — not a defect in the pipeline. **The 50–60% verified-edge-recall target is unchanged** — this revision does not lower it. What changes is that these ceilings are now **known in advance rather than discovered post-hoc**: the target may prove unreachable for reasons intrinsic to the corpus rather than to ARES, and per Decision A the correct response to that, exactly as before, is to implement additional relational-predicate types — never to loosen the evidence rule, and never to count a well-known-session match (§2.1) toward recall. **If Phase 1 lands materially below target, the honest report is the measured verified-edge-recall number plus these ceilings stated as context** — not a target revision and not a suppressed result.
+
+**Production must reinstate:** pre-registered metrics with confidence intervals, multiple incidents, statistically powered baselines, and exact matching rules for sub-techniques and partial answers.
+
+### Decision B — which incident the MVP runs on
+
+**Options presented:**
+1. **OTRF multi-stage, Sysmon-rich**, plus a frozen sibling OTRF incident *(originally presented as "a frozen held-out OTRF sibling incident" — see the renaming note below)*.
+2. **Splunk BOTS** — richest scenario and has a real Q&A key, but Splunk-shaped, heavy to normalise, and its key is not a causal-chain annotation.
+3. **EVTX-ATTACK-SAMPLES single technique** — smallest and fastest, but little causal chain, so it cannot prove the RCA thesis on its own.
+
+**Nithin's position:** debating 1 vs 3 — wants the toolchain proven *and* a realistic simulation people will accept; asked for the best way forward.
+
+**CONFIRMED by Nithin (2026-07-29): both datasets, sequenced.** EVTX-ATTACK-SAMPLES single technique = **Phase 0 smoke test only**, never appears in the demo. OTRF multi-stage Sysmon-rich = **Phase 1 feasibility artifact + stage demo** (the frozen dev incident). A second OTRF incident = the **frozen, single-shot-scored incident**, scored once at the end with no tuning against it.
+
+**Revision 6 — Decision B is now concrete, not just a category choice.** The abstract "a frozen sibling OTRF incident" above is now a specific, verified pair (§0.5, §3, §6, §8): frozen dev incident = `apt29_evals_day1_manual_2020-05-01225525.json` (OTRF ATT&CK Evaluations Round 2, APT29, day 1); frozen single-shot-scored incident = `apt29_evals_day2_manual_2020-05-02035409.json` (same evaluation, day 2). Both were parsed live and confirmed Sysmon-rich against the hard technical constraint below, not merely assumed to be.
+
+**Revision-5 renaming and mechanics (Codex round-4 finding 2c — accepted in part, defended in part):**
+
+- **Codex's recommendation:** an independent human adjudicator should seal the second incident's key, so scoring it is a genuinely blind evaluation control.
+- **The counterposition, stated plainly rather than silently overridden:** there is no second human on this build. Nithin is a solo dev at hackathon scale — a genuinely independent, sealed-key adjudicator does not exist as an available resource here, and pretending the MVP has one by continuing to call the incident "held-out" and "never inspected" would overclaim a control this project cannot actually run.
+- **What changes as a result:** the second incident is renamed throughout this document, wherever the old phrasing appeared, from **"held-out"/"never inspected"** to the **frozen, single-shot-scored incident**. This is not a downgrade in rigor dressed up in new words — it is the honest name for the control that is actually achievable solo, replacing a name that implied a stronger one.
+- **The actually-achievable discipline, stated explicitly (this is what "single-shot-scored" means in practice):** (1) author the frozen incident's ground-truth key **first**, from its raw logs, before any predicate implementation, prompt, or normalization work touches that incident at all; (2) commit and freeze that key; (3) freeze every predicate implementation and every prompt against the **dev** incident only — no iteration against the frozen incident's logs or key during build; (4) score the frozen incident **once**, with no tuning afterward; (5) report that single score, whatever it is — a bad score is not grounds for a second attempt.
+- **Residual bias, stated as a permanent, must-carry disclosure (not a footnote):** the builder (Nithin) reads the frozen incident's raw logs to author its ground-truth key, and therefore has necessarily seen that incident's content before the pipeline is scored against it. **This is not a blind evaluation.** It is an honestly-labeled, single-shot-scored one — a materially weaker but truthfully described control. Every derivative of this work — demo, deck, paper, README, any future presentation — **must carry this disclosure explicitly**, per §9's carry-forward instruction. The risk this guards against is overselling a blind eval that was never run; an honestly-labeled frozen one-shot eval is adequate to demonstrate feasibility, which is the only claim this document makes.
+- **🔒 Production must reinstate, expanded (Codex round-4 finding 2c):** a genuinely independent adjudicator (a second human who authors and seals the key without reading ARES's output first), a sealed key inaccessible to the builder, and a one-shot scoring script that runs the frozen pipeline against the sealed key exactly once with the result recorded automatically — none of which a solo hackathon build can provide, and all of which are required before any evaluation from this lineage is presented as blind.
+
+**Production must reinstate:** multiple incidents across log sources and platforms, not one hand-picked scenario.
+
+### Hard technical constraint applying to both decisions
+
+The chosen dataset **must include Sysmon**. Plain Windows Security EVTX often lacks `ProcessGuid`/`ParentProcessGuid`; without those fields the relational-evidence rule (§2.1) has nothing to check, and every causal edge degrades to unverifiable by construction. This is why OTRF, not EVTX-ATTACK-SAMPLES or vanilla Security-log exports, is confirmed as the source for both the Phase 1 dev incident and the frozen, single-shot-scored incident.
+
+---
+
+## 8. 🔧 BUILD — phased delivery (MVP-scaled, vertical slices)
+
+This breakdown replaces revision 1's 6-phase, ~14–21 day production estimate. It exists to make effort legible for ticket **#6 (effort vs. payoff)**, scored now against a much smaller bar: is roughly a week of solo-dev time worth it to get feasibility evidence. **A review gate fires at each phase's Done**, per the global multi-model routing rule.
+
+### Phase 0 — Foundations & toolchain proof (EVTX smoke test — §7.5 Decision B, CONFIRMED)
+**Estimated effort: 0.5–1 day.**
+- Install Ollama, `uv`. Pull `nomic-embed-text` + Foundation-Sec-8B (or CyberSecQwen-4B fallback). Install Hayabusa, set up a local NVD JSON mirror, install mitreattack-python + the ATT&CK STIX bundle.
+- Pull one single-technique incident from **EVTX-ATTACK-SAMPLES** (per §7.5 Decision B, confirmed); confirm it parses. This sample is a smoke test only and **never appears in the demo**.
+- **Also fetch the two OTRF APT29 incidents here (revision 6, real identifiers, §3/§6):** `datasets/compound/apt29/day1/apt29_evals_day1_manual.zip` (dev incident) and `datasets/compound/apt29/day2/apt29_evals_day2_manual.zip` (frozen single-shot-scored incident), plus the emulation plan at `datasets/compound/apt29/emulationplans/apt29.xlsx`. **These live outside the repo (or gitignored), never committed** — ~13MB zipped, ~367MB extracted for day1 alone. Fetching and parsing them at Phase 0 time, rather than assuming their shape, is what verified the Sysmon hard technical constraint (§3, §7.5) as satisfied rather than assumed.
+- **Done when:** Hayabusa runs against the sample data and emits a timeline; the model answers a raw question via Ollama; a claim gets badged end-to-end at least once; the two OTRF incident files are fetched, parsed, and their Sysmon event-ID counts confirmed present. No full pipeline integration yet.
+
+### Phase 1a — Author and freeze the edge-level causal ground-truth artifacts (Codex round-3 finding 2, spec tightened by round-4 finding 2a/2b/2c; incident identifiers made concrete by revision 6 — sequenced before any Phase 1 scoring)
+**Owner effort, not solo-dev pipeline-build time — a few hours per incident, done by Nithin.**
+- From the raw OTRF logs of the frozen **dev** incident (`apt29_evals_day1_manual_2020-05-01225525.json`, real identifier per §3/§6, replacing the earlier `<dev_incident_id>` placeholder), hand-author its edge-level ground-truth artifact (`eval/ground_truth/apt29-day1.edges.yaml`, spec in §6): every true causal edge, direction, relation type (§2.1 predicate vocabulary), acceptable equivalences, telemetry-unobservable edges, and negative/confounder pairs (§6) — including, per revision 6's finding 3, marking pairs whose only shared `LogonId` is `0x3e7`/`0x3e4`/`0x3e5` as negative/confounder entries, not true edges. **Done before Phase 1's pipeline is run against this incident at all** — informs, but is not derived from, ARES's output.
+- Separately, from the raw logs of the **frozen, single-shot-scored** sibling OTRF incident (`apt29_evals_day2_manual_2020-05-02035409.json`, renamed from "held-out" — §7.5 Decision B), author its own edge-level ground-truth artifact **first** (`eval/ground_truth/apt29-day2.edges.yaml`), the same way, **before any predicate implementation, prompt, or normalization work touches this incident at all** — this ordering, not just "before ARES runs on it," is the actual discipline (§7.5).
+- **Done when:** both artifacts exist, are committed to the repo, and are treated as frozen from that point on — the frozen incident's artifact is never edited after its single scoring run against it (§6). Without this phase, Decision A's integrity and coverage numbers (§7.5) are not computable, only assertable.
+- **Residual bias, restated here because Phase 1a is where it is created:** authoring the frozen incident's key requires Nithin to read its raw logs. From this point forward, this is a single-shot-scored evaluation, not a blind one — carry that disclosure into every later phase and any derivative material (§7.5, §9).
+
+### Phase 1 — MVP core: RCA pipeline + verification badging (THIS IS THE FEASIBILITY SPIKE)
+**Estimated effort: 3–5 days**, in addition to Phase 1a's owner-authoring time (not priced into this figure — see the effort note below). This phase's Done criterion **is** the MVP demo described in §1/§3 — it is not a step toward some later "real" Phase 1; it is the deliverable.
+- Build retrieval (embed CTI/runbook chunks → sqlite-vec search), the planner (decide what evidence to fetch beyond the Hayabusa timeline), evidence assembly (NVD mirror, mitreattack-python, log-store re-query, the four relational-predicate checkers §2.1), the adjudicator prompt (grounded causal-chain narrative as discrete claims), the verification/badging pass (route each claim to its matching predicate contract from §3's table, recording a `verifier_execution` row per attempt bound to its canonical claim at creation, §6), and the escalation path (claims with no matching predicate, and every composite causal claim, become `causal_gap`/Aporia records, §3/§6).
+- **Incident, per §7.5 Decision B (CONFIRMED):** one **OTRF Security-Datasets** multi-stage, Sysmon-rich incident as the **frozen development incident** — predicates and prompts are built and iterated against this incident only — plus a second OTRF sibling incident, the **frozen, single-shot-scored incident**, scored exactly once at the end, with no tuning against its answer key at any point. BOTS is a secondary/scoring source only.
+- **Lightweight evaluation protocol — in MVP scope (Codex round-2 finding 3), not deferred:** the frozen dev/frozen single-shot-scored incidents from Phase 1a, each with its now-frozen edge-level ground-truth artifact, pre-registered metrics and thresholds (below), comparison against a **Hayabusa-alone baseline** and a **simple-RAG baseline** (retrieval + generation, no verification layer), and a standing prohibition on tuning any part of the pipeline against the frozen incident's logs or edge artifact once it is frozen.
+- **Done when** (Done is a number, not an activity — per §7.5 Decision A, CONFIRMED, and refined per Codex round-3 finding 3 and round-4 finding 3), scored against the frozen incident's frozen edge-level ground-truth artifact (§6, Phase 1a) — **three separate edge-level metrics, not one coverage percentage, over the observable true-edge set as defined in §6 (identical wording, same denominator):**
+  - **Proposal recall:** of the observable true edges, how many did the pipeline propose (as a `relational_predicate` or `composite_causal` claim) at all, regardless of how they were badged.
+  - **Verification precision — this is where the integrity floor lives, non-negotiable:** of edges the pipeline badged with a predicate name (`SPAWNED` / `SAME_SESSION` / `WROTE_PATH_BEFORE_EXECUTION` / `PROCESS_OPENED_CONNECTION`), what fraction are correct per the ground-truth artifact, matched via §6's deterministic matching algorithm. **Zero false-verified is required here** — any single incorrectly-badged predicate on the frozen incident fails this Done criterion outright, regardless of the other two metrics. **If the pipeline badges zero edges, verification precision is scored FAIL, not left undefined** — abstaining from badging anything is not a route to passing this criterion (Codex round-4 finding 3). This sits alongside a standing partial defense: abstention was never fully free even before this rule, since a pipeline that badges nothing already fails the verified-edge recall floor below.
+  - **Verified-edge recall — this is where Decision A's 50–60% target attaches:** of the observable true edges, how many ended up correctly badged (not merely proposed). **Target: 50–60%**, raised only by adding relational-predicate types (§2.1), never by loosening a predicate's match condition.
+  - **Measured baseline expectation for this metric (revision 6, dataset property, not an ARES result — do not mistake this for a performance number).** The dev incident's own structure imposes ceilings on how much of the true-edge set any pipeline can even attempt: the `ProcessGuid`→EID 1 `SAME_SESSION` join resolves only **37%** of EID 3 (NetworkConnect) events, **77%** of EID 11 (FileCreate) events, and **95%** of EID 7 (ImageLoad) events (447 EID 1 records total against 1,229 network events is the root cause); `SPAWNED` has its own ceiling — of 446 EID 1 records carrying a `ParentProcessGuid`, 327 (73%) resolve to a captured parent, 119 (27%) are orphans; `WROTE_PATH_BEFORE_EXECUTION` yields only 34 same-host write→execute/load pairs in the dev incident, a small but non-zero contributing population. **State this plainly so a below-target result is not mistaken for a broken pipeline: network-event session reasoning is capped near 37% by the data itself, and events the pipeline cannot resolve become Aporias by design — that is the plan working correctly, not failing.** Per Decision A, if Phase 1 lands materially below the 50–60% target, the honest report is the measured number plus these ceilings as context — never a loosened evidence rule, and never counting a well-known-session match (§2.1) to inflate the figure.
+  - **Predicate truth scored separately from causal truth (Codex round-4 finding 3, new):** the frozen artifact records causal edges; the pipeline emits relation predicates. A `SAME_SESSION` badge being correct is scored as a correct **predicate**, never credited as a correct **causal** claim about the incident's overall story — the two are reported as distinct quantities, not folded into one number.
+  - **ATT&CK technique recall stays separate (Codex round-3 finding 2):** scored against the incident's own OTRF ATT&CK labels, reported alongside but never merged with the three edge-level metrics above; comparative bar is beating both the Hayabusa-alone and simple-RAG baselines on this axis.
+  - **Precedents-disabled/enabled demo, specified as paired deterministic trials (Codex round-3 finding 3, tightened by round-4 finding 3):** both modes are run as **paired deterministic trials** — fixed seed, fixed temperature, identical model version, identical inputs and settings, with the precedent channel the *only* variable that differs between the two runs of a pair — and both are scored against the **same** frozen edge graph. "Newly proposed" is defined as an **edge-level set difference** between the paired runs (edges the precedents-enabled run proposes that the precedents-disabled run of the same pair does not), matched/deduplicated per §6's matching algorithm. The report states explicitly whether verified/unresolved counts are **totals** or **deltas** between the paired runs, and reports, per mode: TP, FP, verified, unresolved, **plus the paired transitions** (which specific edges flipped state between the disabled and enabled run of a pair) — not a single coverage-percentage delta, since the two modes propose different candidate sets and a percentage alone would hide that.
+  - The full timeline + badged causal chain + any open Aporia records is produced and scored against the frozen edge-level artifact, the incident's ATT&CK labels, and (where BOTS is used as a secondary source) its answer key.
+  - This scored output is the feasibility artifact; it answers ticket #5 by being built, and gives #6/#9 something concrete to evaluate. **Every reporting of this scored output must carry the residual-bias disclosure (§7.5, §9): this is a single-shot-scored evaluation, not a blind one.**
+
+### Phase 2 — Dashboard + report export (REQUIRED, revision 7 — §14 Q3 closed with enlarged scope)
+**Effort: additional, unpriced work — see the note at the end of this section. Not part of the existing ~4–9 day figure.**
+
+**Hard sequencing guard: Phase 2 must not begin, and must not consume time, until Phase 1's Done criterion is met and scored.** This is an ordering constraint, not a preference — the dashboard is the presentation of a working feasibility result; if Phase 1 has not produced one, there is nothing to present and any UI work done before that point is pure loss.
+
+This phase was optional/stretch/CLI-only through revision 6. **Nithin's answer to §14 Q3 (2026-07-29) makes it required and concretely scoped:**
+
+- **A dashboard view** (FastAPI + Jinja2 + HTMX + Tailwind, §4): the reconstructed incident timeline; each claim shown with its badge (the relation-predicate names from §2.1 — `SPAWNED` / `SAME_SESSION` / `WROTE_PATH_BEFORE_EXECUTION` / `PROCESS_OPENED_CONNECTION`) or its Aporia status; causal gaps surfaced as **first-class items**, not buried in a log; and Phase 1's three metrics (proposal recall, verification precision, verified-edge recall) displayed as run results, not just written to a report file.
+- **Report export in three formats from one structured report model** — Markdown (.md), HTML, and Excel (.xlsx). Design the report as one structured object rendered three ways; do not write three independent exporters with divergent content. Markdown and HTML reuse the already-in-stack Jinja2; Excel requires **one new dependency, `openpyxl`** (§4) — the only new dependency this revision introduces.
+- Stack choice (Jinja2 + HTMX + Tailwind, §4) is unchanged from earlier revisions' recorded intent — this phase is now what actually gets built, not an optional stretch.
+- **Done when:** the dashboard renders Phase 1's scored output (timeline, badged claims, Aporia records, the three metrics) legibly to a room, and a report can be exported in all three formats from the same underlying data with no divergence between them.
+
+**Cost recorded honestly, not silently absorbed.** Moving Phase 2 from optional-CLI to a required dashboard plus three-format export is a genuine scope increase that adds days to §8's existing ~4–9 day figure, and it proves nothing additional about *feasibility* — the thesis this document exists to test is the verification layer (§2), not presentation. Nithin's rationale is hackathon-specific and legitimate: judges score what they can see, and a downloadable report is a strong close. Per the standing rule, this document does **not** invent a new effort total for this — Phase 2's enlarged scope is additional unpriced work, alongside Phase 1a's owner-authoring hours and revision 6's fixture work (below).
+
+### Phase 3 — Code-review add-on demo (optional, separate feature)
+**Estimated effort: 1–2 days.**
+- Run semgrep + gitleaks + osv-scanner against a sample "vibe-coded automation" artifact (an AI-generated glue script or n8n flow export with a planted credential/injection issue), with the model explaining each finding.
+- **Done when:** the planted issues are found and correctly tagged (CWE ID, tool source), demonstrating the add-on independent of the RCA core — this phase can be skipped without affecting the MVP's own Done criterion (Phase 1).
+
+**Total for the core feasibility artifact (Phase 0+1): ~4–6 solo-dev days.** This is the number ticket #6 should be checked against for the feasibility question specifically — a materially smaller and more honest bar than revision 1's production estimate. **This figure does not include Phase 1a, and, as of revision 7, does not include Phase 2's now-required dashboard + three-format report export** — Phase 2 is additional unpriced scope (§8 Phase 2's own note), not folded into a new total, layered on top of this figure alongside Phase 1a's owner-authoring hours and revision 6's fixture work. Phase 3 (code-review add-on) remains optional and separate, at its previously stated ~1–2 days if built.
+
+**On the original (round-2) finding 4 — effort estimate, low-stakes, not prioritised by the owner:** revision 3 kept the existing ~4–9 day estimate rather than inventing a new number to look more rigorous. State plainly what it is: an **unvalidated planner guess**, phase-level, with **no bottom-up decomposition** behind it (no line-item breakdown of test data prep, failure-handling time, or contingency). It is good enough to score ticket #6's "is a week of solo-dev time worth it" question, and no better than that. If greater precision is ever wanted, the honest path is a **post-Phase-0 estimate** — real numbers from the toolchain compatibility spike, not a bigger-looking guess produced now.
+
+**Revision-4 addition — Phase 1a is newly added owner work, not priced into the ~4–9 day figure above.** Codex round-3 finding 2 made the frozen edge-level ground-truth artifact a hard prerequisite for computing Decision A's numbers at all. That artifact is Nithin's own hand-authoring effort against raw logs (a few hours per incident, two incidents), not solo-dev pipeline-build time, and this document does **not** fold it into a new total — the ~4–9 day figure remains what it was (an unvalidated phase-level guess for the *build*), and Phase 1a's owner-hours sit alongside it, separately, as newly-identified required effort with no invented total covering both.
+
+**Revision-5 addition — no new total, two more items of unpriced additional Phase 0/1a work identified.** Codex round-4 finding 1's six mandatory confounded-negative fixtures (§2.1) and finding 2(a)'s deterministic prediction-to-key matching algorithm (§6) are both additional required work discovered this round — neither existed as a checklist item before. Consistent with the revision-4 addition above, this document does **not** invent a new total to absorb them: they sit alongside the existing ~4–9 day build estimate and Phase 1a's owner-hours as further newly-identified, unpriced effort, not a re-estimate.
+
+*(Production build, if ever pursued: an entirely separate future master-plan revision, starting from §9's deferred list — not a continuation of this phase numbering.)*
+
+---
+
+## 9. What the MVP scope changes (read this before presenting ARES anywhere)
+
+**This section is a permanent fixture of this document, written for future iterations to pick up.** It records production concerns that were raised by the Codex adversarial review of revision 1, are **legitimate**, and are **deferred by scope** here — not refuted, not forgotten, and to be reinstated in full when ARES moves toward production:
+
+- **Bottom-up effort estimation** including test data, failure handling, security remediation, packaging, documentation, and contingency. (Revision 1's ~14–21 day figure was phase-level guesswork, not a bottom-up estimate — a real production estimate has not been done and §8's MVP-scaled numbers do not substitute for one.)
+- **Production hardening**: a full role/endpoint authorization matrix, CSRF protection, file-upload isolation, idempotent confirm/override with optimistic concurrency, atomic persistence, dependency timeout and degraded-response behaviour, backup/restore integrity testing.
+- **Per-segment compliance surface**: defense, healthcare, payments, and EU critical infrastructure impose materially different deployment, identity, audit, evidence-retention, and assurance requirements (§2's segment list is a targeting note, not a compliance analysis).
+- **Schema migrations, document re-ingestion, CVE/IOC data freshness, packaging and distribution** for anything beyond a single dev-machine run.
+- **Statistically powered, production-grade evaluation**: confidence intervals, multiple incidents across log sources and platforms, exact sub-technique/partial-answer matching rules, sensitivity/specificity/precision/calibration reporting. **Note (Codex finding 3, resolved):** the *lightweight* version of an evaluation protocol — a frozen dev incident, a frozen single-shot-scored incident, pre-registered thresholds, and comparison against Hayabusa-alone and simple-RAG baselines — is **no longer deferred**; it is now in MVP scope, folded into §8 Phase 1's Done criterion and §7.5 Decision A. What's deferred here is only the statistically-powered, multi-incident successor to that lightweight protocol — see also the next bullet on what production must additionally reinstate for the single-shot control specifically.
+- **A genuinely blind evaluation control:** an independent adjudicator who authors and seals the scoring key without the builder having read it, a sealed key inaccessible to the builder, and a one-shot automated scoring script (§7.5 Decision B, Codex round-4 finding 2c). This MVP runs a **frozen, single-shot-scored** evaluation instead — the builder has read that incident's logs to author its key, which is a real and permanent limitation, not a blind control. This is deferred to production, not solved here, because no second human is available at solo hackathon scale.
+- **Learning-loop maturity beyond the MVP-scaled Aporia design (§2.1/§3/§6):** predicate authoring/promotion, composition rules for chaining predicates into higher-level causal claims, a `causal_gap_events` junction table, cross-check querying via a dedicated `causal_gap_checks` table, a four-state `learning_eligibility` field, and a real ServiceNow (or equivalent) ticketing integration replacing the local JSON outbox. (Predicate *versioning* itself is no longer deferred — it is now structural, §3/§6, per Codex round-3 finding 4.)
+- **Session-based reasoning has a measured limitation, not just an MVP-scope one (new, revision 6).** Excluding well-known logon sessions (`0x3e7`/`0x3e4`/`0x3e5`, §2.1) from `SAME_SESSION` fixes the specific vacuous-match failure measured in the dev incident, but the underlying issue — a shared session identifier is weak evidence of relatedness on any system with long-lived or heavily-reused sessions, well-known or otherwise — is a general property of session-based reasoning, not specific to this corpus. A production track should treat `SAME_SESSION`-style evidence as inherently weaker than `SPAWNED` or `WROTE_PATH_BEFORE_EXECUTION`, and should re-examine whether session identity needs additional scoping (session-start timestamp bounding, process-tree proximity, etc.) beyond what this MVP attempts (§2.1's derivation note).
+
+**Instruction to carry forward:** any future presentation of ARES — pitch decks, slides, research papers, write-ups, or a production master-plan revision — **must state plainly that MVP scope deliberately excluded the items above**, so the feasibility claim this document supports is never mistaken for a production-readiness claim. Copy this instruction, not just the list, into any derivative material. **In addition, must-carry, non-negotiable (Codex round-4 finding 2c):** every such presentation must also state the residual-bias disclosure — the frozen incident's evaluation is single-shot-scored by the builder, not blind, because the builder read its logs to author its ground-truth key. This disclosure travels with the feasibility claim itself, not just with this document.
+
+**Note on `docs/PITCH.md`:** that document is now **doubly stale** — it is MSSP-framed (a V2/production-track framing, §13), and it predates both the RCA/verification-layer shape (§1–§3 of this revision) and the MVP scoping in this section. It has not been edited as part of this revision; whoever picks up a production track should rewrite it from scratch against this document, not patch it.
+
+---
+
+## 10. 🔒 Security of the tool itself (MVP-scoped)
+
+At MVP scope, ARES ingests only public dataset content (no untrusted third-party input from a real deployment), and runs single-operator, local-only. The production security posture (auth, CSRF, sandboxing, secrets management, dependency hygiene at deployment scale) is deferred in full per §9. What's kept even at MVP scope, because it costs nothing to keep:
+
+- **Prompt-injection awareness.** Retrieved/pasted content is wrapped and delimited in the prompt; system instructions assert that ingested content is *data, not commands*. Relevant because the labeled datasets (§8 Phase 1) can plausibly contain adversarial-looking strings by design (they're attack data) — a good test of this property, not just a hardening exercise.
+- **Code-scan sandboxing.** Any code artifact touched by the verification layer or the Phase 3 add-on is **never executed** — read as text only.
+- **Local-only.** No network exposure; nothing binds beyond localhost.
+
+Everything else in revision 1's security section (password hashing, deny-by-default RBAC, audit logging, input limits, dependency pinning at deployment scale) is a production concern — see §9.
+
+---
+
+## 11. 📚 LEARN — the SEC-OPS learning path (the real gap)
+
+Priority order — the tool's quality depends on you grasping these:
+
+1. **Root-cause analysis & timelines** — re-read §2B. Understand what makes a timeline defensible (ordering, clock skew, multi-host correlation) and why a claim-by-claim causal chain is checkable in a way a single verdict is not. (1 hr)
+2. **MITRE ATT&CK** — browse `attack.mitre.org`; click 2–3 techniques (e.g. T1566 Phishing) to see the structure. Backbone of the causal chain and the scoring rubric. (1–2 hr)
+3. **CVE + CVSS** — read one CVE end-to-end (try CVE-2024-3094, the xz backdoor). Relevant to the identifier-claim verification tool. (45 min)
+4. **OWASP Top 10 + CWE** — skim the list; look up CWE-89 (SQLi) and CWE-79 (XSS). Grounds the code-review add-on. (1 hr)
 5. **Incident response lifecycle (NIST)** — the 6 phases, once, for vocabulary. (30 min)
-6. **(Optional, hands-on)** spin up a free tier of an open SIEM (Wazuh) later to *feel* what real alerts look like — informs your sample data.
+6. **(Optional, hands-on)** browse the OTRF Security-Datasets or BOTS v3 answer key directly to see what a real labeled incident and its ground truth look like *before* Phase 1 starts — the best possible primer for what the pipeline needs to reconstruct.
 
-Tech bits (Ollama API, RAG mechanics, sqlite-vec, HTMX) I teach **in context** as we hit them in Phase 0/1 — no pre-study needed there.
+Tech bits (Ollama API, Hayabusa's CLI, RAG mechanics, sqlite-vec, the planner/adjudicator pattern) taught **in context** as we hit them in Phase 0/1 — no pre-study needed there.
 
-I use the global `teach` skill to explain each domain piece as it touches a build decision (e.g. we'll design the triage prompt *and* learn ATT&CK mapping together).
-
----
-
-## 11. Open questions & future (decide now or defer)
-
-**Need a decision before/early in build:**
-- **Q1. Project name** — keep "Prahari" or rename? (Cosmetic, low stakes.)
-- **Q2. Sample data** — do you have real runbooks/CVEs/logs/code to test with, or should I generate realistic sample data for development?
-- **Q3. Model pick** — start with CyberSecQwen-4B (one-time GGUF import, best fit) or Foundation-Sec-8B (one-command pull, heavier)? Recommendation: **CyberSecQwen-4B**, fallback ready.
-- **Q4. Frontend** — HTMX + Jinja (recommended: lightest, server-owns-state) or React/Next SPA (heavier, but if you want a richer client)? You're a capable dev, so it's a real preference, not a skill constraint.
-
-**Explicitly deferred (not in first build, noted so we design without painting into a corner):**
-- Multi-tenant / MSSP mode (per-client data isolation) — would move DB to Postgres, add tenant scoping everywhere. Big. Only if the product direction demands it.
-- Fine-tuning your own model — revisit once you're comfortable and have labeled data.
-- SSO/2FA/password-reset, network deployment + TLS, on-machine encryption at rest.
-- Live SIEM/log-source connectors.
+I use the global `teach` skill to explain each domain piece as it touches a build decision.
 
 ---
 
-## 12. Approval
+## 12. 🔧 BUILD — apollo-soc reuse plan (what's lifted, what's skipped)
 
-**This plan needs your explicit approval before any implementation code is written.**
+`apollo-soc` (a prior, related project — compliance-scanning harness with 434 tests, 16 scanners) shares scaffolding with ARES's semgrep usage (both the in-loop code verification, §3, and the code-review add-on, §8 Phase 3).
+
+**Reused (~600 lines, roughly):**
+- Enums (severity levels, finding categories, etc.)
+- Finding sub-models (the shape of "here is a code finding: line, severity, explanation, ID")
+- Scanner base class + registry pattern
+- The `semgrep` integration itself
+- Correlation logic (linking related findings)
+- `keyword_search` utility
+
+**Explicitly skipped:**
+- **Postgres** — apollo-soc's storage layer; ARES uses the single SQLite file (§6).
+- **The compliance scanners** — apollo-soc's 16 scanners are compliance-framework-specific; ARES needs the generic scanner scaffolding, not the framework-specific logic.
+- **OCSF/VEX export formats** — no reporting-interop requirement at MVP or (currently scoped) production.
+
+**Why this split:** apollo-soc solves "prove compliance against N frameworks" — a different problem from ARES's "check a model's code-related claim, or scan a vibe-coded script, fast." Reusing the generic scanning scaffolding avoids re-solving a solved problem; skipping the compliance/Postgres layers avoids importing complexity ARES doesn't need at this scope.
+
+---
+
+## 13. 🔧 BUILD — V2 / production roadmap (explicitly out of MVP scope)
+
+`docs/PITCH.md` frames ARES in MSSP terms — that framing is **aspirational, and now doubly stale** (§9). It should not be read as in-scope for anything in this document.
+
+If ARES is ever extended toward production and/or a multi-tenant MSSP model, it requires a genuinely larger, separately-planned effort, starting from the full deferred list in §9 plus:
+- **Postgres**, replacing the single-SQLite-file model in §6 — multi-tenant data isolation is not something one file with a naming convention can do safely.
+- **Tenant scoping** across every table/query/RBAC check.
+- **Horizontal model serving** — "one model held live" (§5) does not survive concurrent multi-org load.
+- **Per-tenant auth** and a real role system, replacing §7's deferred placeholder.
+- **Isolation guarantees strong enough to sell.**
+- **A real ServiceNow (or equivalent) ticketing adapter**, replacing the local JSON-outbox emitter (§3/§6) — the `AdjudicationTicket` payload shape is designed to map onto this directly; a ServiceNow `sys_id` becomes the ticket's external reference at that point.
+- **Learning-loop maturity beyond MVP scale**: predicate authoring/promotion, composition rules, cross-incident querying of individual relational-evidence checks, and workflow/assignment/SLA controls on adjudication tickets (full deferred list, §3/§9).
+
+None of this is scoped, sized, or committed to. If a production track opens, it starts as a **separate master-plan revision**, informed by what the MVP (§8) actually demonstrated — not a same-document pivot.
+
+---
+
+## 14. Open questions & future (re-scoped to MVP)
+
+**All three previously-open questions are now CLOSED (revision 7, Nithin's own answers, 2026-07-29) — see §0.5's "Revision 6 → 7" entry for the full reasoning behind each:**
+- **Q1. Project name — CLOSED.** Keep **ARES**. No rename, no backronym.
+- **Q2. Model pick — CLOSED, question was mis-framed.** §5's two-model split is confirmed as already written: Foundation-Sec-8B (SecOps/RCA default), Qwen2.5-Coder-7B (code-review add-on only), CyberSecQwen-4B (low-RAM SecOps fallback only, not a competing pick). New operational consequence made explicit: Foundation-Sec-8B + Qwen2.5-Coder-7B (~10.5GB) cannot both be resident on a 16GB M4 (~10GB usable) — loading is strictly sequential, and any same-session Phase 1 + Phase 3 demo needs a scripted unload/load pause.
+- **Q3. Frontend / presentation — CLOSED, scope INCREASES.** Full UI with a dashboard, plus report export in Markdown, HTML, and Excel from one structured report model. §8 Phase 2 is now **required, not optional**, gated to start only after Phase 1's Done criterion is scored. Adds `openpyxl` to §4 as the only new dependency this revision introduces. This is additional unpriced work, not folded into a new effort total (§8).
+
+**Only genuinely downstream-of-the-MVP wayfinder items remain open, per §0.5:**
+- **#5 — prototype proof.** Resolved by construction once §8 Phase 0–1 is built and run — no longer a separate open question.
+- **#6 — effort vs. payoff.** Open, scored against §8's ~4–9 day MVP-scaled core-feasibility estimate (Phase 0+1) rather than revision 1's ~14–21 day figure; Phase 1a's owner-authoring hours and Phase 2's now-required scope sit alongside it, unpriced.
+- **#7 — path to first user.** Open, and low-priority — the MVP targets no organization.
+- **#8 — GO/NO-GO (production).** Open, downstream of the MVP's results, and explicitly **not** required to close before building the MVP (§0.5).
+- **#9 — differentiation wedge.** **Resolved** by Nithin's decision during grilling: the wedge is the verification layer (§2), not turnkey/stack-agnostic/code-scan-first.
+
+**Explicitly out of MVP scope (§9/§13 have the full detail):**
+- Any production hardening, compliance work, multi-tenant/MSSP mode, fine-tuning, live SIEM connectors, real auth/RBAC.
+
+**Settled by Nithin (2026-07-29) — no longer open, tracked in §7.5 as CONFIRMED:**
+- **Decision A** — what counts as feasible (integrity + coverage bar, §7.5). Confirmed: both metrics, integrity non-negotiable, coverage now expressed as verified-edge recall (Codex round-3 finding 3, §8).
+- **Decision B** — which incident the MVP runs on (EVTX smoke test → OTRF feasibility artifact + a frozen, single-shot-scored sibling incident, §7.5). Confirmed.
+
+**With §14's three questions closed and Decisions A and B confirmed, no open questions remain in the plan (§15).** The only remaining items are the wayfinder-tracked, genuinely-downstream ones above (#6, #7, #8) and Nithin's approval decision itself.
+
+---
+
+## 15. Approval
+
+## ✅ APPROVED by Nithin, 2026-07-29 — as the MVP plan
+
+Build of §8 is authorized, starting with Phase 0 and Phase 1a. This approval covers the **MVP only** (§8 Phase 0/1a/1, Phase 2 required, Phase 3 optional) — it does **not** authorize a production build; that remains a separate future revision (§13).
+
+Approved with three limitations explicitly acknowledged rather than resolved, recorded here so they are never later mistaken for oversights:
+1. **The evaluation is not blind.** Nithin authors the frozen incident's ground-truth key from its raw logs, so he has read them. Every derivative artifact (demo, deck, paper, README) must say so (§9).
+2. **The 50–60% verified-edge-recall target may be unreachable** for reasons intrinsic to the corpus — revision 6 measured a ~37% ceiling on network-event session resolution. If Phase 1 lands short, the honest report is the measured number plus those ceilings as context, never a loosened evidence rule (§7.5 Decision A, §8).
+3. **The effort figure is an unvalidated guess.** ~4–9 days for Phase 0+1, with Phase 1a's owner-authoring hours, Phase 2's enlarged scope, and the confounded-negative fixture work all unpriced on top (§8).
+
+Also approved knowingly: **revisions 5, 6, and 7 have not had an adversarial pass.** Nithin was told this and approved anyway, on the reasoning that revision 6's findings came from measurement rather than review, and that the remaining questions are better settled by running code against real logs (Phase 0) than by further passes over prose.
+
+---
+
+**Original approval request (retained as the record of what was approved):**
+
+**This plan needs Nithin's explicit approval before any implementation code is written.**
+
+Approving this document authorizes building the **MVP** (§8 Phase 0/1a/1, **Phase 2 required per revision 7's Q3 closure**, plus the optional Phase 3 add-on) — it does **not** authorize, and should not be read as authorizing, a production build. A production track, if pursued, is a separate future master-plan revision (§13).
+
+**§7.5's two decisions are now CONFIRMED by Nithin (2026-07-29)** — not merely proposed, and **not reopened by this revision**. Approving this document approves them as stated, including revision 4's refinement of Decision A's coverage number into three separate edge-level metrics (§8), revision 5's further refinement of the FAIL-on-zero-badged rule, the observable-edge denominator, and the predicate-truth/causal-truth split (§8), revision 5's renaming of the second incident to the frozen, single-shot-scored incident and its stated residual bias (§7.5, §9), and revision 6's concretization of Decision B with real incident identifiers, the `Hostname` field-name correction, the well-known-session exclusion in `SAME_SESSION`, and the measured coverage-ceiling context attached to Decision A's 50–60% target (all §0.5, §2.1, §7.5, §8).
+
+**Revision 7 closes §14's three remaining open questions with Nithin's own answers (2026-07-29) — see §0.5's "Revision 6 → 7" entry.** Q1 (name: keep ARES), Q2 (models: §5's two-model split confirmed as written, plus the newly-explicit sequential-loading constraint), and Q3 (frontend: full dashboard + three-format report export, §8 Phase 2 now required, `openpyxl` added to §4) are all resolved. **With §14's questions closed and Decisions A and B confirmed, no open questions remain in the plan.** It is ready for Nithin's approval decision.
+
+**This revision's own diff has not had an adversarial pass.** Revision 7 is administrative — it records Nithin's own decisions rather than resolving a Codex finding or a measurement — but per the standing multi-model routing rule, a fresh adversarial pass on this revision's diff is still expected to run before Nithin's approval is sought as final. This document does not presume that round's outcome and **does not mark itself approved.**
 
 Please respond with one of:
-- ✅ **"Approved"** — I start Phase 0.
-- ✏️ **Amendments** — tell me what to change (stack, scope, phasing, models, name) and I revise this doc first.
-- ❓ **Questions** — anything in §2/§10 unclear, ask; I'll teach it before we proceed.
+- ✅ **"Approved [as the MVP plan]"** — build of §8 begins, starting with Phase 0 and Phase 1a.
+- ✏️ **Amendments** — tell me what to change and I revise this doc first.
+- ❓ **Questions** — anything in §2.1/§3/§6/§7.5/§8/§9 unclear, ask; I'll teach it before we proceed.
 
-Once approved, I create `resume.md`, set up the task list, and begin Phase 0.
+Once approved, I update `resume.md` and begin Phase 0.
