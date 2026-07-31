@@ -34,10 +34,14 @@ version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "mitreattack-python" },
+    { name = "openpyxl" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "mitreattack-python", specifier = ">=6.1.0" }]
+requires-dist = [
+    { name = "mitreattack-python", specifier = ">=6.1.0" },
+    { name = "openpyxl", specifier = ">=3.1.5" },
+]
 
 [[package]]
 name = "cachebox"

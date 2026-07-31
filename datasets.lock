@@ -3,6 +3,10 @@ OTRF_SECURITY_DATASETS_COMMIT=d9d40ef123d2c87d5d3df28c96bcab4f0faccc87
 apt29_evals_day1_manual.zip 98a073140860560d70080ace9142961be4f64b4862bae892d62d0f254d0fdbe5
 apt29_evals_day2_manual.zip 377f8cba5db95a453a3ee8bd19f493efafc23724541482a4da99da28ee4665f9
 evtx/sample.evtx 897206ca4c3c427753fde880970048494cd5a99be9aaba6154b4e3ac499e24c9
+# MITRE's APT29 Evals Round 2 emulation plan — the attacker's own step-by-step
+# script. Scaffolding for authoring the Phase 1a causal key, and the reference
+# for the separate ATT&CK-recall metric. NOT itself a causal-edge key.
+apt29_emulationplan.xlsx 053e70c6ba95eac481b370f8b1545ec3f1f00306c828634741a8c7399719c228
 # Downstream code parses the EXTRACTED JSON, not the verified ZIP bytes. Pin the
 # extracted artifacts too, or a truncated/edited tree passes an existence check.
 apt29/day1/apt29_evals_day1_manual_2020-05-01225525.json dce651806007a20f6f4bac806dd6054e3361e0dd57a74ddd2f7cb5665d98c954
