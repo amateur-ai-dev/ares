@@ -2,11 +2,29 @@
 
 > Living status snapshot. Update on any significant change. Complements `docs/MASTER_PLAN.md` (intent) — this is live state.
 
-**Last updated:** 2026-07-29
+**Last updated:** 2026-07-31
 
 ---
 
-## 🔖 RESUME HERE (2026-07-29 — plan APPROVED, Phase 0 built, in re-review)
+## 🔖 RESUME HERE (2026-07-31 — Phase 0 DONE and COMMITTED; next is Phase 1a, Nithin's own work)
+
+**Phase 0 is closed.** Marked `✅ DONE 2026-07-29` in `docs/MASTER_PLAN.md` §8 and committed as `a59c7c4` (`feat(phase0): foundations, frozen datasets, first SPAWNED badge`). The plan commit `b009e49` precedes it.
+
+The phase gate returned a **conditional GO**, and the condition is met: `evtx/` and `attack/` were relocated out of the purge-prone `/private/tmp/ares-datasets` into `$HOME/.ares/datasets`, and the EVTX digest is in `datasets.lock`. Four residual quality items were then closed by Terra and **independently re-verified by the main thread against the real `$HOME` paths, not Terra's sandbox symlink**:
+- `datasets.lock` is no longer decorative — it is the sole source of the OTRF commit and every digest; both `fetch_phase0_datasets.sh` and `setup_toolchain.sh` read it, neither hardcodes a hash.
+- The 4.9GB GGUF is now digest-pinned (`7a61e41b…cd58b`), verified byte-for-byte on disk. It was the one artifact Ollama loads and *executes* that had TLS-only integrity while much smaller evaluation zips were pinned.
+- `setup_toolchain.sh` preflights `ollama`/`uv`, verifies GGUF and EVTX digests, and actually runs Hayabusa to produce a timeline.
+- Bare `assert`s in the smoke script replaced with explicit `SystemExit` checks, so `python -O` cannot strip the verification. README documents the three operational commands.
+
+Verified this session: 4/4 tests pass; smoke exits 0 on both incidents; the fetcher run twice against `$HOME/.ares/datasets` downloads nothing and completes in 0.13s.
+
+**Next: Phase 1a — Nithin's own work, and the long pole.** Hand-author and freeze edge-level causal ground-truth (`eval/ground_truth/<incident>.edges.yaml`) for day1, then day2, read from raw logs — **before** any predicate or prompt work touches the frozen incident. Phase 1 cannot be scored without it. Nothing else is blocked on the main thread.
+
+`docs/PITCH.md` stays stale on purpose; leave it until a production track opens.
+
+---
+
+### Superseded bookmark (2026-07-29 — plan APPROVED, Phase 0 built, in re-review)
 
 **MASTER_PLAN revision 7 was APPROVED by Nithin on 2026-07-29** and committed as `b009e49` (revisions 2–7 in one commit). Approval covers the MVP only, with three limitations knowingly accepted rather than resolved: the evaluation is not blind, the 50–60% target may be corpus-limited, and the effort figure is an unvalidated guess. Nithin also approved knowing revisions 5/6/7 never had their own adversarial pass. See §15.
 
