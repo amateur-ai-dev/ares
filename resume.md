@@ -6,7 +6,33 @@
 
 ---
 
-## 🔖 RESUME HERE (bookmarked 2026-07-29, revision 7 written)
+## 🔖 RESUME HERE (2026-07-29 — plan APPROVED, Phase 0 built, in re-review)
+
+**MASTER_PLAN revision 7 was APPROVED by Nithin on 2026-07-29** and committed as `b009e49` (revisions 2–7 in one commit). Approval covers the MVP only, with three limitations knowingly accepted rather than resolved: the evaluation is not blind, the 50–60% target may be corpus-limited, and the effort figure is an unvalidated guess. Nithin also approved knowing revisions 5/6/7 never had their own adversarial pass. See §15.
+
+**Phase 0 status: BUILT, SENT BACK by the phase gate, fixed, currently in re-review.** Not yet marked Done.
+
+Phase 0 implementation was written by GPT 5.6 Terra via codex (router rule 3). Toolchain installs were done by the main thread afterwards, because codex's sandbox had no network access.
+
+**Measured in Phase 0 — durable record, do not re-derive:**
+- **Foundation-Sec-8B: 5.3GB resident, 100% GPU, ~21 tok/s (150 tokens in 7.2s), 0.1s warm load.** §5's ~5–6GB adjudicator claim is VALIDATED against the ~10GB usable budget on the M4. It is **not** in the Ollama library (404) — installed from the official GGUF `fdtn-ai/Foundation-Sec-8B-Reasoning-Q4_K_M-GGUF` → `$HOME/.ares/models/foundation-sec-8b-q4km.gguf` → one-line Modelfile → `ollama create foundation-sec-8b`. At 5.3GB measured + Qwen2.5-Coder-7B's ~4.5GB ≈ 9.8GB, §5's **sequential-loading requirement is confirmed still necessary**.
+- **The model's first real answer was confidently wrong** — asked about `winword.exe` → `rundll32.exe` → EID 10 on `lsass.exe`, it answered "DLL Side-loading" (it is T1003.001, with T1218.011 for the rundll32 proxy) and produced no ATT&CK ID at all. Fluent, plausible, authoritative, wrong — a live demonstration of exactly why the verification layer (§2) exists. Worth using in the demo.
+- Both incident zips are preserved at `$HOME/.ares/datasets/` with digests recorded in `datasets.lock`: day1 `98a073140860560d70080ace9142961be4f64b4862bae892d62d0f254d0fdbe5`, day2 `377f8cba5db95a453a3ee8bd19f493efafc23724541482a4da99da28ee4665f9`, OTRF pinned at commit `d9d40ef123d2c87d5d3df28c96bcab4f0faccc87`. day1's digest was independently reproduced by two separate downloads.
+- Hayabusa v3.10.0 installed to `ares/tools/hayabusa` (gitignored, 66MB); emits a real timeline from an EVTX sample. `nomic-embed-text` returns 768-dim embeddings. ATT&CK STIX bundle = 25,843 objects.
+
+**Phase gate round 1 (Opus reviewer + Codex adversarial, Lens C skipped — no security-sensitive surface) SENT PHASE 0 BACK with 6 findings.** All fixed, all verified:
+- **F1 (blocking):** Phase 0's Done clause says "**the** model", and §5 defines that as Foundation-Sec-8B — the smoke had run on a pre-existing `granite4:3b`. The main thread had read the Done line too leniently. Fixed by actually installing and measuring the real model (above).
+- **F2 (high):** the "frozen" incidents were pinned to a **mutable `master` ref with no checksum**, and existed only in a session-temp directory macOS prunes. Phase 1a authors a key against those exact bytes, so drift would have produced silently wrong scores with no error. Fixed: commit-pinned, SHA-256-verified, `datasets.lock` committed, default moved to `$HOME/.ares/datasets`, fetch made transactional and idempotent.
+- **F3 (medium):** the smoke script printed counts but never asserted them. Fixed and **empirically confirmed to bite** — truncating day1 to 100k lines makes it exit 1; restoring makes it exit 0.
+- **F4 (medium-low):** `badge_first_spawned` matched `EventID == 1` with no Channel check. Measured as no live bug on this corpus (all 3 non-Sysmon EID1 records lack `ProcessGuid`), but a latent contract gap. Fixed with a Channel clause on both parent and child.
+- **F5/F7 (low):** added orphan-parent and non-Sysmon-EID1 regression tests (4/4 pass), plus `scripts/setup_toolchain.sh` so the toolchain is reproducible on a clean machine.
+- Not findings, assessed and dismissed with reasoning: zip-slip, and `summarize_sysmon`'s direct `event["EventID"]` index (zero missing across 196,081 records).
+
+**Next:** finish the Phase 0 re-review; if clean, mark Phase 0 Done in MASTER_PLAN §8 and commit. Then **Phase 1a — Nithin's own work**, and the long pole: hand-author and freeze the edge-level causal ground-truth artifacts for day1 then day2, before any predicate or prompt work touches the frozen incident. Phase 1 cannot be scored without it.
+
+---
+
+### Superseded bookmark (revision 7 written, pre-approval)
 
 **Nothing is open on Nithin's side except one thing: approve MASTER_PLAN revision 7 — and revision 7 itself has not yet been through its own adversarial pass.** Both MVP-only decisions (§7.5) remain CONFIRMED and unreopened. §14's three previously-open questions (name, models, frontend) are now all CLOSED by Nithin's own answers (2026-07-29) — **no open questions remain in the plan** as of revision 7. This is the last pre-approval gate.
 

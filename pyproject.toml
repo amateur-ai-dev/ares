@@ -1,0 +1,7 @@
+[project]
+name = "ares"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = [
+    "mitreattack-python>=6.1.0",
+]

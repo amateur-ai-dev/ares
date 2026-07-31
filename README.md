@@ -21,3 +21,7 @@ Pre-build. Architecture and delivery plan are defined; no implementation code ye
 ## Stack (planned)
 
 Local-only: **Ollama** (security-tuned SLM) · **FastAPI** · **SQLite + sqlite-vec** (one file, RAG vector store) · **Jinja2 + HTMX + Tailwind**. No cloud, no API keys, no data egress.
+
+## Phase 0 checks
+
+Run tests with `uv run python -m unittest discover -s tests`. Run the frozen-corpus smoke check with `uv run python scripts/phase0_otrf_smoke.py`, and fetch/verify its artifacts with `scripts/fetch_phase0_datasets.sh`.

@@ -23,3 +23,12 @@ data/
 
 # Models (Ollama stores its own; never vendor weights)
 *.gguf
+
+# Third-party tool binaries + rule sets (Hayabusa etc). Installed by script,
+# never vendored — 66MB and platform-specific.
+tools/
+
+# Datasets live outside the repo entirely ($HOME/.ares/datasets),
+# but belt-and-braces in case anyone extracts one in here.
+*.evtx
+datasets/

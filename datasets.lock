@@ -1,0 +1,8 @@
+# Frozen Phase 0 OTRF APT29 incident artifacts
+OTRF_SECURITY_DATASETS_COMMIT=d9d40ef123d2c87d5d3df28c96bcab4f0faccc87
+apt29_evals_day1_manual.zip 98a073140860560d70080ace9142961be4f64b4862bae892d62d0f254d0fdbe5
+apt29_evals_day2_manual.zip 377f8cba5db95a453a3ee8bd19f493efafc23724541482a4da99da28ee4665f9
+evtx/sample.evtx 897206ca4c3c427753fde880970048494cd5a99be9aaba6154b4e3ac499e24c9
+# This 4.9GB GGUF is loaded and executed by Ollama, but was fetched with TLS-only
+# integrity while much smaller evaluation archives were digest-pinned; pin it too.
+models/foundation-sec-8b-q4km.gguf 7a61e41b1ca1b339d41caf3001ea7832469d866e7c52a23980a1e95cbf5cd58b
