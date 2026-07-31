@@ -1,0 +1,588 @@
+<title>ARES — Project Tracker</title>
+<style>
+  :root{
+    --bg:#0b0e13; --bg2:#11151d; --bg3:#161b25; --line:#232b38; --line2:#2f3a4c;
+    --fg:#d7dee9; --fg2:#8b97a8; --fg3:#5d6878;
+    --done:#3fb950; --reopen:#d29922; --prog:#58a6ff; --block:#f85149; --idle:#5d6878;
+    --accent:#ff7b52;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:var(--sans); font-size:14px; line-height:1.5;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1400px; margin:0 auto; padding:20px 22px 70px}
+  code,.mono,.m{font-family:var(--mono)}
+
+  /* ---- header ---- */
+  header{border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:18px}
+  .hrow{display:flex; flex-wrap:wrap; gap:18px; align-items:flex-start; justify-content:space-between}
+  h1{font-family:var(--mono); font-size:20px; letter-spacing:.14em; margin:0; font-weight:600}
+  h1 .dim{color:var(--fg3)}
+  .sub{color:var(--fg2); font-size:12.5px; margin-top:5px; max-width:62ch}
+  .clock{text-align:right; flex-shrink:0}
+  .clock .lbl{font-family:var(--mono); font-size:10px; letter-spacing:.16em; color:var(--fg3); text-transform:uppercase}
+  .clock .val{font-family:var(--mono); font-size:30px; font-weight:600; letter-spacing:.02em; line-height:1.15}
+  .clock .val.ok{color:var(--prog)} .clock .val.warn{color:var(--reopen)} .clock .val.crit{color:var(--block)}
+  .clock .meta{font-family:var(--mono); font-size:10.5px; color:var(--fg3)}
+
+  /* ---- banner ---- */
+  .banner{
+    border:1px solid #5a3410; background:#1d1408; border-left:3px solid var(--reopen);
+    padding:10px 13px; border-radius:3px; margin-bottom:18px; font-size:12.5px; color:#e8d5b0;
+  }
+  .banner b{font-family:var(--mono); color:var(--reopen); letter-spacing:.08em; font-size:11px}
+
+  /* ---- stat tiles ---- */
+  .tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px; margin-bottom:22px}
+  .tile{background:var(--bg2); border:1px solid var(--line); border-radius:3px; padding:11px 13px}
+  .tile .k{font-family:var(--mono); font-size:10px; letter-spacing:.14em; color:var(--fg3); text-transform:uppercase}
+  .tile .v{font-family:var(--mono); font-size:24px; font-weight:600; margin-top:3px; line-height:1.2}
+  .tile .n{font-size:11.5px; color:var(--fg2); margin-top:3px}
+  .bar{height:5px; background:var(--bg3); border-radius:2px; overflow:hidden; margin-top:8px}
+  .bar > i{display:block; height:100%; background:var(--done)}
+  .bar.time > i{background:var(--accent)}
+
+  /* ---- section ---- */
+  h2{
+    font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--fg2); margin:0 0 10px; font-weight:600;
+    border-bottom:1px solid var(--line); padding-bottom:7px;
+  }
+  h2 span{color:var(--fg3); letter-spacing:.06em; text-transform:none; font-weight:400; float:right}
+
+  /* ---- gantt ---- */
+  .scroller{overflow-x:auto; border:1px solid var(--line); border-radius:3px; background:var(--bg2)}
+  .gantt{min-width:860px; padding:0}
+  .grow{display:grid; grid-template-columns:250px 1fr; border-bottom:1px solid var(--line)}
+  .grow:last-child{border-bottom:0}
+  .grow.head{background:var(--bg3); position:sticky; top:0}
+  .glabel{padding:9px 12px; border-right:1px solid var(--line); min-width:0}
+  .glabel .nm{font-family:var(--mono); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .glabel .ow{font-size:10.5px; color:var(--fg3); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .glabel .ow.self{color:var(--accent)}
+  .gtrack{position:relative; height:100%; min-height:44px}
+  .ticks{position:absolute; inset:0; pointer-events:none}
+  .ticks i{position:absolute; top:0; bottom:0; width:1px; background:var(--line)}
+  .ticks i.day{background:var(--line2)}
+  .thead{height:34px; position:relative}
+  .thead .t{position:absolute; top:9px; font-family:var(--mono); font-size:10px; color:var(--fg3); transform:translateX(-50%); white-space:nowrap}
+  .now{position:absolute; top:0; bottom:0; width:1px; background:var(--accent); z-index:4}
+  .now::after{content:"NOW"; position:absolute; top:1px; left:3px; font-family:var(--mono); font-size:9px; color:var(--accent); letter-spacing:.1em}
+  .barw{position:absolute; top:11px; height:22px; border-radius:2px; display:flex; align-items:center; padding:0 7px; z-index:2; min-width:5px}
+  .barw span{font-family:var(--mono); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:.95}
+  .b-done{background:rgba(63,185,80,.20); border:1px solid var(--done); color:#8ee39c}
+  .b-reopened{background:rgba(210,153,34,.18); border:1px solid var(--reopen); color:#f0cf87; background-image:repeating-linear-gradient(45deg,transparent,transparent 5px,rgba(210,153,34,.16) 5px,rgba(210,153,34,.16) 10px)}
+  .b-progress{background:rgba(88,166,255,.20); border:1px solid var(--prog); color:#a5cdff}
+  .b-blocked{background:rgba(248,81,73,.14); border:1px solid var(--block); color:#ffa8a3; background-image:repeating-linear-gradient(45deg,transparent,transparent 5px,rgba(248,81,73,.14) 5px,rgba(248,81,73,.14) 10px)}
+  .b-idle{background:rgba(93,104,120,.16); border:1px solid var(--idle); color:#9aa5b4}
+  .b-optional{background:transparent; border:1px dashed var(--idle); color:var(--fg3)}
+  .barw.crit{box-shadow:0 0 0 1px var(--accent), 0 0 12px -2px var(--accent)}
+  .dep{position:absolute; height:1px; background:var(--fg3); z-index:1; top:22px}
+  .dep::after{content:"▶"; position:absolute; right:-2px; top:-6px; color:var(--fg3); font-size:9px; line-height:1}
+  .gate{position:absolute; top:6px; bottom:6px; width:0; border-left:2px dotted var(--block); z-index:3}
+  .gate::after{content:"⛔ HARD GATE"; position:absolute; top:-2px; left:5px; font-family:var(--mono); font-size:9px; color:var(--block); letter-spacing:.06em; white-space:nowrap}
+
+  .legend{display:flex; flex-wrap:wrap; gap:14px; margin-top:9px; font-family:var(--mono); font-size:10.5px; color:var(--fg2)}
+  .legend b{display:inline-block; width:11px; height:11px; border-radius:2px; vertical-align:-1px; margin-right:5px}
+
+  /* ---- phase cards ---- */
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:12px}
+  .card{background:var(--bg2); border:1px solid var(--line); border-radius:3px; border-top:2px solid var(--idle); padding:13px 14px}
+  .card.s-done{border-top-color:var(--done)} .card.s-reopened{border-top-color:var(--reopen)}
+  .card.s-progress{border-top-color:var(--prog)} .card.s-blocked{border-top-color:var(--block)}
+  .card.critpath{box-shadow:0 0 0 1px rgba(255,123,82,.45)}
+  .chead{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap}
+  .cid{font-family:var(--mono); font-size:11px; color:var(--fg3); letter-spacing:.1em}
+  .cname{font-family:var(--mono); font-size:13.5px; font-weight:600}
+  .pill{font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; padding:2px 6px; border-radius:2px; border:1px solid}
+  .p-done{color:var(--done); border-color:#1d4327; background:rgba(63,185,80,.10)}
+  .p-reopened{color:var(--reopen); border-color:#5a3410; background:rgba(210,153,34,.10)}
+  .p-progress{color:var(--prog); border-color:#1e3a5f; background:rgba(88,166,255,.10)}
+  .p-blocked{color:var(--block); border-color:#5c2320; background:rgba(248,81,73,.10)}
+  .p-idle{color:var(--fg2); border-color:var(--line2)}
+  .p-crit{color:var(--accent); border-color:#5c2d1a; background:rgba(255,123,82,.12)}
+  .meta{font-family:var(--mono); font-size:10.5px; color:var(--fg3); margin-top:7px; display:grid; grid-template-columns:auto 1fr; gap:2px 10px}
+  .meta dt{color:var(--fg3)} .meta dd{margin:0; color:var(--fg2); overflow-wrap:anywhere}
+  .meta dd.self{color:var(--accent)}
+  .est{color:var(--reopen)}
+  .note{font-size:11.5px; color:var(--fg2); margin-top:9px; padding-left:8px; border-left:2px solid var(--line2)}
+  .sechd{font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; color:var(--fg3); text-transform:uppercase; margin:12px 0 5px}
+  ul.ck{list-style:none; margin:0; padding:0}
+  ul.ck li{display:flex; gap:7px; font-size:12px; padding:2.5px 0; color:var(--fg2); align-items:flex-start}
+  ul.ck li .bx{font-family:var(--mono); flex-shrink:0; color:var(--fg3)}
+  ul.ck li.ok{color:var(--fg)} ul.ck li.ok .bx{color:var(--done)}
+  ul.ck li.defect .bx{color:var(--block)} ul.ck li.defect{color:#e8b3b0}
+  ul.bl{list-style:none; margin:0; padding:0}
+  ul.bl li{font-size:12px; color:#e8b3b0; padding:3px 0 3px 14px; position:relative}
+  ul.bl li::before{content:"▸"; position:absolute; left:0; color:var(--block)}
+  .cbar{display:flex; align-items:center; gap:8px; margin-top:10px}
+  .cbar .bar{flex:1; margin:0}
+  .cbar .pct{font-family:var(--mono); font-size:10.5px; color:var(--fg3); width:44px; text-align:right}
+
+  footer{margin-top:26px; border-top:1px solid var(--line); padding-top:13px; font-size:11.5px; color:var(--fg3)}
+  footer h3{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--fg2); margin:0 0 6px}
+  footer ul{margin:0 0 10px; padding-left:16px} footer li{margin:2px 0}
+  footer code{color:var(--fg2); font-size:11px}
+  @media (max-width:640px){
+    .grow{grid-template-columns:150px 1fr}
+    .clock{text-align:left}
+    .hrow{gap:10px}
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="hrow">
+      <div>
+        <h1>ARES <span class="dim">// PROJECT TRACKER</span></h1>
+        <div class="sub">
+          Local AI SOC assistant — MVP feasibility spike. Phase model per
+          <code>docs/MASTER_PLAN.md</code> §8. Live state per <code>resume.md</code>.
+          Everything on this page derives from the single <code>PROJECT_STATE</code> block in the page source.
+        </div>
+      </div>
+      <div class="clock">
+        <div class="lbl">T-minus / 48h deadline</div>
+        <div class="val" id="countdown">--:--:--</div>
+        <div class="meta" id="deadline-meta">&nbsp;</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="tiles">
+    <div class="tile">
+      <div class="k">Overall complete</div>
+      <div class="v" id="pct-overall">—</div>
+      <div class="n" id="pct-overall-note">—</div>
+      <div class="bar"><i id="pct-overall-bar" style="width:0"></i></div>
+    </div>
+    <div class="tile">
+      <div class="k">Deadline consumed</div>
+      <div class="v" id="pct-time">—</div>
+      <div class="n" id="pct-time-note">—</div>
+      <div class="bar time"><i id="pct-time-bar" style="width:0"></i></div>
+    </div>
+    <div class="tile">
+      <div class="k">Critical path</div>
+      <div class="v" id="crit-id" style="color:var(--accent)">—</div>
+      <div class="n" id="crit-note">—</div>
+    </div>
+    <div class="tile">
+      <div class="k">Open blockers</div>
+      <div class="v" id="blockers" style="color:var(--block)">—</div>
+      <div class="n" id="blockers-note">—</div>
+    </div>
+  </div>
+
+  <h2>Gantt — 48h window <span id="gantt-window"></span></h2>
+  <div class="scroller">
+    <div class="gantt" id="gantt"></div>
+  </div>
+  <div class="legend">
+    <div><b style="background:var(--done)"></b>done</div>
+    <div><b style="background:var(--reopen)"></b>done · reopened for fixes</div>
+    <div><b style="background:var(--prog)"></b>in progress</div>
+    <div><b style="background:var(--block)"></b>blocked</div>
+    <div><b style="background:var(--idle)"></b>not started</div>
+    <div><b style="background:transparent;border:1px dashed var(--idle)"></b>optional / unscheduled</div>
+    <div><b style="background:var(--accent)"></b>critical path</div>
+    <div style="color:var(--fg3)">— all bar positions are ESTIMATES (see notes)</div>
+  </div>
+
+  <h2 style="margin-top:26px">Phase detail <span>done-criteria checklists from MASTER_PLAN §8</span></h2>
+  <div class="cards" id="cards"></div>
+
+  <footer>
+    <h3>Provenance</h3>
+    <ul>
+      <li><b>Phase set, done-criteria, effort estimates, hard gates</b> — <code>docs/MASTER_PLAN.md</code> §8 (Phase 0, 1a, 1, 2, 3), §7.5 (Decisions A/B), §2.1 (predicates).</li>
+      <li><b>Live completion state, Phase 0 gate history, measured numbers</b> — <code>resume.md</code> (last updated 2026-07-31).</li>
+      <li><b>Commit evidence</b> — <code>609298c</code> resume update · <code>a59c7c4</code> feat(phase0) · <code>b009e49</code> MASTER_PLAN rev 2–7 approved.</li>
+      <li><b>Not from the plan</b> — the 48h deadline and every bar start/end on the Gantt. The plan carries no calendar dates; those are marked ESTIMATE throughout.</li>
+    </ul>
+    <div>Single source of truth for this page: the <code>PROJECT_STATE</code> block at the top of the page's script.</div>
+  </footer>
+</div>
+
+<script>
+// ============================================================================
+// ---- PROJECT_STATE: edit this block to update the tracker ----
+// Everything the page renders derives from this object. Nothing below the
+// closing marker needs to change to update status, dates, checklists or notes.
+//
+// status:  "done" | "done-reopened" | "in-progress" | "blocked" | "not-started"
+// est:     true  => start/end are ESTIMATES, not plan-stated dates (plan has none)
+// ============================================================================
+const PROJECT_STATE = {
+  project: "ARES",
+  // Hard 48h deadline. Start of the window and the deadline itself.
+  windowStart: "2026-07-31T00:00:00",
+  deadline:    "2026-08-02T00:00:00",
+  deadlineNote: "48h from 2026-07-31. No wall-clock time is stated anywhere in the plan or resume.md — midnight boundaries assumed.",
+
+  // Plan-stated effort, for the reality-check banner. MASTER_PLAN §8.
+  plannedEffort: "Phase 0+1 ≈ 4–6 solo-dev days; Phase 1a owner-hours, Phase 2, and the fixture/matching work are all explicitly UNPRICED on top (MASTER_PLAN §8).",
+
+  criticalPath: {
+    id: "1a",
+    why: "Owner-only work (Nithin hand-authors the causal ground truth). Phase 1's three metrics are not computable without it — only assertable. Cannot be delegated to an agent."
+  },
+
+  phases: [
+    {
+      id: "0",
+      name: "Foundations & toolchain proof",
+      status: "done",
+      owner: "GPT 5.6 Terra (build) + main thread (toolchain)",
+      ownerIsNithin: false,
+      optional: false,
+      planEffort: "0.5–1 day",
+      start: "2026-07-31T00:00:00", end: "2026-07-31T04:00:00", est: true,
+      estNote: "Bar shows the IN-WINDOW defect-fix work only. The phase itself was built and committed 2026-07-29 (a59c7c4), before this window opened. 4h fix duration is an estimate — the plan gives none.",
+      deps: [],
+      note: "Marked ✅ DONE 2026-07-29 in MASTER_PLAN §8 and committed. Passed its phase gate on the second pass (sent back with 6 findings, all fixed). Reopened when a GPT 5.6 adversarial review found 3 further defects — all three fixed and committed 2026-07-31 (97c2c6f). Now cleanly closed.",
+      checklist: [
+        { t: "Hayabusa runs against sample data and emits a timeline", done: true },
+        { t: "Foundation-Sec-8B answers a raw question via Ollama (5.3GB resident, ~21 tok/s, measured)", done: true },
+        { t: "A claim gets badged end-to-end at least once (first SPAWNED badge)", done: true },
+        { t: "Both OTRF APT29 incidents fetched, parsed, Sysmon event-ID counts confirmed", done: true },
+        { t: "Datasets commit-pinned + digest-verified in datasets.lock, out of the prune-prone tmp dir", done: true },
+        { t: "FIXED — fetcher no longer accepts corrupted extracted data (extracted JSON pinned in datasets.lock, verified on fast path and post-extract; proven to bite)", done: true, defect: true },
+        { t: "FIXED — badge function can no longer self-parent; a false SPAWNED badge was reachable from malformed input (regression test added)", done: true, defect: true },
+        { t: "FIXED — smoke test now freezes the full Sysmon histogram and the exact badge payload, not a subset and a non-null check", done: true, defect: true }
+      ],
+      blockers: []
+    },
+    {
+      id: "1a",
+      name: "Author & freeze causal ground truth",
+      status: "not-started",
+      owner: "NITHIN — personally, hand-authored. Not delegable.",
+      ownerIsNithin: true,
+      optional: false,
+      planEffort: "a few hours per incident × 2 incidents (owner-hours, NOT priced into the ~4–9 day build figure)",
+      start: "2026-07-31T04:00:00", end: "2026-07-31T14:00:00", est: true,
+      estNote: "10h estimated from the plan's 'a few hours per incident' × 2, plus revision 5/6's unpriced additions (7 confounded-negative fixtures, equivalence grammar, matching algorithm). The plan gives no dates.",
+      deps: ["0"],
+      note: "THE LONG POLE. resume.md: 'Next: Phase 1a — Nithin's own work, and the long pole.' Nothing else on the main thread is blocked; everything downstream is.",
+      checklist: [
+        { t: "eval/ground_truth/apt29-day1.edges.yaml — dev incident, hand-authored from raw logs", done: false },
+        { t: "eval/ground_truth/apt29-day2.edges.yaml — frozen single-shot-scored incident, authored BEFORE any predicate/prompt/normalization work touches it", done: false },
+        { t: "Edge universe, eligibility rules, event identity + equivalence grammar recorded (§6)", done: false },
+        { t: "Observable-edge denominator, worded identically to §8", done: false },
+        { t: "Negative/confounder edges — incl. well-known-session pairs (0x3e7 / 0x3e4 / 0x3e5) marked as confounders, not true edges", done: false },
+        { t: "Deterministic prediction-to-key matching algorithm + dedup (§6)", done: false },
+        { t: "Composite edges recorded as UNSCORED annotations only, never scoreable key entries", done: false },
+        { t: "Both artifacts committed and treated as frozen from that point on", done: false },
+        { t: "Residual-bias disclosure carried forward (builder has read the frozen incident's logs — not a blind evaluation)", done: false }
+      ],
+      blockers: [
+        "Owner bandwidth is the only input. No agent can substitute — the whole point is that the key is authored independently of ARES's output.",
+        "Phase 0's open defects should close first: the key is authored against exact pinned bytes, and the fetcher's corrupt-data acceptance touches those bytes."
+      ]
+    },
+    {
+      id: "1",
+      name: "RCA pipeline + verification badging",
+      status: "blocked",
+      owner: "GPT 5.6 Terra via codex (router rule 3)",
+      ownerIsNithin: false,
+      optional: false,
+      planEffort: "3–5 days (plan-stated) — does not fit the remaining window",
+      start: "2026-07-31T14:00:00", end: "2026-08-01T20:00:00", est: true,
+      estNote: "30h estimated. The plan says 3–5 DAYS for this phase; that does not fit a 48h window. The bar shows the time available, not the time the plan says it needs.",
+      deps: ["1a"],
+      note: "THE FEASIBILITY SPIKE. Its Done criterion IS the MVP demo. Done is a number, not an activity (§7.5 Decision A, CONFIRMED).",
+      checklist: [
+        { t: "Retrieval (sqlite-vec), planner, evidence assembly, adjudicator prompt, badging pass, Aporia escalation path", done: false },
+        { t: "Four relational-predicate checkers: SPAWNED / SAME_SESSION / WROTE_PATH_BEFORE_EXECUTION / PROCESS_OPENED_CONNECTION", done: false },
+        { t: "Badge firewall enforced at BOTH trigger and function level (§6)", done: false },
+        { t: "Proposal recall, over the observable true-edge set", done: false },
+        { t: "Verification precision — ZERO false-verified, non-negotiable; FAIL (not undefined) if zero edges badged", done: false },
+        { t: "Verified-edge recall — target 50–60%, raised only by adding predicate types, never by loosening a match condition", done: false },
+        { t: "Predicate truth scored as a distinct quantity from causal-narrative truth", done: false },
+        { t: "ATT&CK technique recall, scored separately; beats Hayabusa-alone AND simple-RAG baselines", done: false },
+        { t: "Precedents disabled/enabled as PAIRED deterministic trials, per-mode TP/FP/verified/unresolved + paired transitions", done: false },
+        { t: "Local NVD JSON mirror (consciously deferred out of Phase 0 into here)", done: false },
+        { t: "Full timeline + badged causal chain + open Aporia records produced and scored, with the residual-bias disclosure attached", done: false }
+      ],
+      blockers: [
+        "HARD: no Phase 1a ground-truth artifact ⇒ none of the three metrics is computable, only assertable.",
+        "Measured corpus ceilings cap what any pipeline can attempt: SAME_SESSION's ProcessGuid→EID1 join resolves 37% of EID3, 77% of EID11, 95% of EID7; SPAWNED has a 27% parent-orphan rate; WROTE_PATH_BEFORE_EXECUTION yields only 34 pairs on day1.",
+        "Plan-stated 3–5 days against a 48h total window that also has to carry Phase 1a and Phase 2."
+      ]
+    },
+    {
+      id: "2",
+      name: "Dashboard + 3-format report export",
+      status: "blocked",
+      owner: "GPT 5.6 Terra via codex",
+      ownerIsNithin: false,
+      optional: false,
+      planEffort: "additional UNPRICED work — explicitly not part of the ~4–9 day figure",
+      start: "2026-08-01T20:00:00", end: "2026-08-02T00:00:00", est: true,
+      estNote: "4h estimated — whatever is left of the window. The plan prices this phase at nothing at all; it is recorded as unpriced scope.",
+      deps: ["1"],
+      hardGate: true,
+      gateText: "Phase 1 Done criterion MET AND SCORED",
+      note: "Required, not optional (revision 7, §14 Q3). HARD SEQUENCING GUARD from §8, quoted: Phase 2 'must not begin, and must not consume time, until Phase 1's Done criterion is met and scored.' An ordering constraint, not a preference — UI work before a scored result is pure loss.",
+      checklist: [
+        { t: "Dashboard renders the reconstructed incident timeline", done: false },
+        { t: "Each claim shown with its predicate badge, or its Aporia status", done: false },
+        { t: "Causal gaps surfaced as FIRST-CLASS items, not buried in a log", done: false },
+        { t: "The three Phase 1 metrics displayed as run results, not just written to a file", done: false },
+        { t: "One structured report model → Markdown (.md) export", done: false },
+        { t: "Same model → HTML export", done: false },
+        { t: "Same model → Excel (.xlsx) export via openpyxl (the only new dependency)", done: false },
+        { t: "No content divergence between the three formats", done: false },
+        { t: "Legible to a room", done: false }
+      ],
+      blockers: [
+        "HARD GATE: Phase 1 must be Done AND scored. This gate is real and load-bearing, not decorative — starting early is defined in the plan as loss.",
+        "Transitively blocked by Phase 1a."
+      ]
+    },
+    {
+      id: "3",
+      name: "Code-review add-on demo",
+      status: "not-started",
+      owner: "unassigned",
+      ownerIsNithin: false,
+      optional: true,
+      planEffort: "1–2 days",
+      start: null, end: null, est: true,
+      estNote: "Deliberately unscheduled — genuinely optional, and there is no room for it in a 48h window.",
+      deps: [],
+      note: "Optional and separate. Can be skipped without affecting the MVP's own Done criterion (Phase 1). If demoed in the same session as Phase 1, the Foundation-Sec-8B → Qwen2.5-Coder-7B unload/load pause must be SCRIPTED into the demo flow (~10.5GB combined vs ~10GB usable on the M4).",
+      checklist: [
+        { t: "semgrep + gitleaks + osv-scanner run against a sample vibe-coded automation artifact", done: false },
+        { t: "Planted issues found and correctly tagged (CWE ID, tool source)", done: false },
+        { t: "Model explains each finding", done: false }
+      ],
+      blockers: [
+        "Not scheduled inside the 48h window — optional by design.",
+        "Sequential model loading: Foundation-Sec-8B (5.3GB measured) + Qwen2.5-Coder-7B (~4.5GB) cannot both be resident."
+      ]
+    }
+  ]
+};
+// ============================================================================
+// ---- END PROJECT_STATE ----
+// ============================================================================
+
+/* ------------------------- derived values ------------------------- */
+const S = PROJECT_STATE;
+const WSTART = new Date(S.windowStart).getTime();
+const DEAD   = new Date(S.deadline).getTime();
+const SPAN   = DEAD - WSTART;
+
+const STATUS_LABEL = {
+  "done": "done", "done-reopened": "done · reopened",
+  "in-progress": "in progress", "blocked": "blocked", "not-started": "not started"
+};
+const STATUS_KEY = {
+  "done": "done", "done-reopened": "reopened",
+  "in-progress": "progress", "blocked": "blocked", "not-started": "idle"
+};
+
+function phaseProgress(p){
+  const t = p.checklist.length, d = p.checklist.filter(c => c.done).length;
+  return { done: d, total: t, pct: t ? Math.round(100 * d / t) : 0 };
+}
+function overallProgress(){
+  const req = S.phases.filter(p => !p.optional);
+  let d = 0, t = 0;
+  req.forEach(p => { const g = phaseProgress(p); d += g.done; t += g.total; });
+  return { done: d, total: t, pct: t ? Math.round(100 * d / t) : 0, phases: req.length,
+           phasesDone: req.filter(p => phaseProgress(p).pct === 100).length };
+}
+function pos(iso){ return ((new Date(iso).getTime() - WSTART) / SPAN) * 100; }
+const clamp = v => Math.max(0, Math.min(100, v));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+
+/* ------------------------- countdown ------------------------- */
+function fmtDur(ms){
+  if (ms <= 0) return "00:00:00";
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor(ms % 3600000 / 60000);
+  const s = Math.floor(ms % 60000 / 1000);
+  return String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0") + ":" + String(s).padStart(2,"0");
+}
+function tickClock(){
+  const now = Date.now();
+  const left = DEAD - now;
+  const el = document.getElementById("countdown");
+  el.textContent = left > 0 ? fmtDur(left) : "OVERRUN " + fmtDur(-left);
+  el.className = "val " + (left <= 0 ? "crit" : left < SPAN * 0.25 ? "crit" : left < SPAN * 0.5 ? "warn" : "ok");
+  document.getElementById("deadline-meta").textContent =
+    "deadline " + S.deadline.replace("T", " ") + "  ·  window " + Math.round(SPAN / 3600000) + "h";
+
+  const consumed = clamp(((now - WSTART) / SPAN) * 100);
+  document.getElementById("pct-time").textContent = consumed.toFixed(1) + "%";
+  document.getElementById("pct-time-bar").style.width = consumed + "%";
+  document.getElementById("pct-time-note").textContent =
+    (left > 0 ? fmtDur(left).split(":")[0] + "h " + fmtDur(left).split(":")[1] + "m remaining" : "deadline passed") +
+    " of " + Math.round(SPAN / 3600000) + "h";
+
+  const nowEls = document.querySelectorAll(".now");
+  const p = clamp(((now - WSTART) / SPAN) * 100);
+  nowEls.forEach(n => { n.style.left = p + "%"; n.style.display = (now < WSTART || now > DEAD) ? "none" : "block"; });
+}
+
+/* ------------------------- tiles ------------------------- */
+(function renderTiles(){
+  const o = overallProgress();
+  document.getElementById("pct-overall").textContent = o.pct + "%";
+  document.getElementById("pct-overall-bar").style.width = o.pct + "%";
+  document.getElementById("pct-overall-note").textContent =
+    o.done + " / " + o.total + " done-criteria items across " + o.phases +
+    " required phases (" + o.phasesDone + " phase fully closed). Optional Phase 3 excluded.";
+
+  const cp = S.phases.find(p => p.id === S.criticalPath.id);
+  document.getElementById("crit-id").textContent = "Phase " + cp.id;
+  document.getElementById("crit-note").textContent = cp.name + " — " + S.criticalPath.why;
+
+  const n = S.phases.reduce((a, p) => a + p.blockers.length, 0);
+  document.getElementById("blockers").textContent = n;
+  document.getElementById("blockers-note").textContent =
+    S.phases.filter(p => p.blockers.length).map(p => "P" + p.id).join(" · ") + " carry open blockers";
+
+  document.getElementById("banner").innerHTML =
+    "<b>SCOPE vs CLOCK —</b> " + esc(S.plannedEffort) +
+    " The window is <b style='font-family:var(--mono)'>48h</b>. Phase 1 alone is plan-estimated at 3–5 days. " +
+    "Every bar on the Gantt below is therefore a fitted ESTIMATE of available time, not a plan-stated schedule — " +
+    "<i>the plan carries no calendar dates at all.</i> " + esc(S.deadlineNote);
+
+  document.getElementById("gantt-window").textContent =
+    S.windowStart.replace("T"," ") + "  →  " + S.deadline.replace("T"," ");
+})();
+
+/* ------------------------- gantt ------------------------- */
+(function renderGantt(){
+  const g = document.getElementById("gantt");
+  const hours = Math.round(SPAN / 3600000);
+  const step = 6; // 6h ticks = quarter-days
+
+  let ticks = '<div class="ticks">';
+  let heads = "";
+  for (let h = 0; h <= hours; h += step){
+    const left = (h / hours) * 100;
+    const d = new Date(WSTART + h * 3600000);
+    const isDay = d.getHours() === 0;
+    ticks += '<i class="' + (isDay ? "day" : "") + '" style="left:' + left + '%"></i>';
+    const lbl = isDay
+      ? (d.getMonth() + 1) + "/" + d.getDate() + " 00h"
+      : String(d.getHours()).padStart(2,"0") + "h";
+    heads += '<div class="t" style="left:' + left + '%">' + lbl + "</div>";
+  }
+  ticks += "</div>";
+
+  let html =
+    '<div class="grow head">' +
+      '<div class="glabel"><div class="nm">PHASE</div><div class="ow">owner</div></div>' +
+      '<div class="gtrack thead">' + ticks + heads + '<div class="now"></div></div>' +
+    "</div>";
+
+  const rowIndex = {};
+  S.phases.forEach((p, i) => rowIndex[p.id] = i);
+
+  S.phases.forEach(p => {
+    const st = STATUS_KEY[p.status];
+    const isCrit = p.id === S.criticalPath.id;
+    const prog = phaseProgress(p);
+
+    let bar = "";
+    if (p.start && p.end){
+      const l = clamp(pos(p.start)), r = clamp(pos(p.end));
+      const cls = "b-" + (p.optional ? "optional" : st) + (isCrit ? " crit" : "");
+      const label = "P" + p.id + " · " + STATUS_LABEL[p.status] + " · " + prog.done + "/" + prog.total +
+                    (p.est ? " · EST" : "");
+      bar = '<div class="barw ' + cls + '" style="left:' + l + '%;width:' + Math.max(r - l, 1) + '%"' +
+            ' title="' + esc(p.name + " — " + p.estNote) + '"><span>' + esc(label) + "</span></div>";
+      // dependency stub: a short lead-in line from the left edge
+      if (p.deps.length){
+        bar += '<div class="dep" style="left:' + Math.max(l - 4, 0) + '%;width:4%"></div>';
+      }
+      if (p.hardGate){
+        bar += '<div class="gate" style="left:' + l + '%"></div>';
+      }
+    } else {
+      bar = '<div class="barw b-optional" style="left:76%;width:23%" title="' + esc(p.name + " — " + p.estNote) +
+            '"><span>' + esc("P" + p.id + " · unscheduled / optional") + "</span></div>";
+    }
+
+    html +=
+      '<div class="grow">' +
+        '<div class="glabel">' +
+          '<div class="nm">' + (isCrit ? "▶ " : "") + "P" + esc(p.id) + " — " + esc(p.name) + "</div>" +
+          '<div class="ow' + (p.ownerIsNithin ? " self" : "") + '">' +
+             (p.deps.length ? "after P" + p.deps.join(",P") + " · " : "") + esc(p.owner) +
+          "</div>" +
+        "</div>" +
+        '<div class="gtrack">' + ticks + '<div class="now"></div>' + bar + "</div>" +
+      "</div>";
+  });
+
+  g.innerHTML = html;
+})();
+
+/* ------------------------- phase cards ------------------------- */
+(function renderCards(){
+  const wrap = document.getElementById("cards");
+  wrap.innerHTML = S.phases.map(p => {
+    const st = STATUS_KEY[p.status];
+    const isCrit = p.id === S.criticalPath.id;
+    const g = phaseProgress(p);
+    const win = (p.start && p.end)
+      ? p.start.slice(5).replace("T"," ").slice(0,11) + " → " + p.end.slice(5).replace("T"," ").slice(0,11)
+      : "unscheduled";
+
+    return '<div class="card s-' + st + (isCrit ? " critpath" : "") + '">' +
+      '<div class="chead">' +
+        '<span class="cid">PHASE ' + esc(p.id) + "</span>" +
+        '<span class="cname">' + esc(p.name) + "</span>" +
+        '<span class="pill p-' + st + '">' + esc(STATUS_LABEL[p.status]) + "</span>" +
+        (isCrit ? '<span class="pill p-crit">critical path</span>' : "") +
+        (p.optional ? '<span class="pill p-idle">optional</span>' : "") +
+        (p.ownerIsNithin ? '<span class="pill p-crit">owner: nithin</span>' : "") +
+      "</div>" +
+
+      '<dl class="meta">' +
+        "<dt>owner</dt><dd" + (p.ownerIsNithin ? ' class="self"' : "") + ">" + esc(p.owner) + "</dd>" +
+        "<dt>effort</dt><dd>" + esc(p.planEffort) + "</dd>" +
+        "<dt>window</dt><dd>" + esc(win) + (p.est && p.start ? ' <span class="est">[ESTIMATE]</span>' : "") + "</dd>" +
+        "<dt>depends</dt><dd>" + (p.deps.length ? "Phase " + p.deps.join(", Phase ") : "—") +
+          (p.hardGate ? ' <span style="color:var(--block)">· HARD GATE: ' + esc(p.gateText) + "</span>" : "") + "</dd>" +
+      "</dl>" +
+
+      '<div class="cbar"><div class="bar"><i style="width:' + g.pct + '%' +
+        (g.pct === 100 ? "" : ";background:" + (st === "blocked" ? "var(--block)" : st === "reopened" ? "var(--reopen)" : "var(--prog)")) +
+        '"></i></div><div class="pct">' + g.done + "/" + g.total + "</div></div>" +
+
+      '<div class="note">' + esc(p.note) + "</div>" +
+      (p.est ? '<div class="note" style="border-left-color:var(--reopen);color:var(--fg3)"><b class="est">ESTIMATE —</b> ' + esc(p.estNote) + "</div>" : "") +
+
+      '<div class="sechd">Done criteria (' + g.done + "/" + g.total + ")</div>" +
+      '<ul class="ck">' + p.checklist.map(c =>
+        '<li class="' + (c.done ? "ok" : "") + (c.defect ? " defect" : "") + '">' +
+        '<span class="bx">[' + (c.done ? "x" : c.defect ? "!" : " ") + "]</span><span>" + esc(c.t) + "</span></li>"
+      ).join("") + "</ul>" +
+
+      (p.blockers.length
+        ? '<div class="sechd" style="color:var(--block)">Blockers (' + p.blockers.length + ")</div>" +
+          '<ul class="bl">' + p.blockers.map(b => "<li>" + esc(b) + "</li>").join("") + "</ul>"
+        : "") +
+    "</div>";
+  }).join("");
+})();
+
+tickClock();
+setInterval(tickClock, 1000);
+</script>
