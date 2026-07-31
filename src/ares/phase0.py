@@ -38,6 +38,11 @@ def badge_first_spawned(events):
     by_host_and_guid = {(event["Hostname"], event["ProcessGuid"]): event for event in process_creates}
     for child in process_creates:
         parent_guid = child.get("ParentProcessGuid")
+        # A record whose ParentProcessGuid equals its own ProcessGuid joins to
+        # itself and proves no parent-child relationship. Badging it would be a
+        # false SPAWNED — the one failure this project must never produce.
+        if parent_guid == child["ProcessGuid"]:
+            continue
         if parent_guid and (child["Hostname"], parent_guid) in by_host_and_guid:
             return {
                 "badge": "SPAWNED",

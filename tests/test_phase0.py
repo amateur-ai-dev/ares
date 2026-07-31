@@ -43,6 +43,14 @@ class Phase0Tests(unittest.TestCase):
 
         self.assertEqual(badge_first_spawned(parse_events(path)), None)
 
+    def test_badge_first_spawned_refuses_a_record_that_is_its_own_parent(self):
+        """A self-join proves no relationship — badging it is a false VERIFIED."""
+        path = self.write_events([
+            '{"EventID": 1, "Channel": "Microsoft-Windows-Sysmon/Operational", "Hostname": "a.dmevals.local", "ProcessGuid": "g", "ParentProcessGuid": "g"}',
+        ])
+
+        self.assertEqual(badge_first_spawned(parse_events(path)), None)
+
     def test_badge_first_spawned_ignores_non_sysmon_event_id_1_records(self):
         path = self.write_events([
             '{"EventID": 1, "Channel": "Other", "Hostname": "a.dmevals.local", "ProcessGuid": "parent"}',

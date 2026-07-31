@@ -50,7 +50,27 @@ day1_archive="$ARCHIVE_PATH"
 fetch_archive day2 apt29_evals_day2_manual.zip apt29d2.zip
 day2_archive="$ARCHIVE_PATH"
 
-if [[ -f "$data_dir/apt29/day1/apt29_evals_day1_manual_2020-05-01225525.json" && -f "$data_dir/apt29/day2/apt29_evals_day2_manual_2020-05-02035409.json" ]]; then
+extracted_files=(
+  apt29/day1/apt29_evals_day1_manual_2020-05-01225525.json
+  apt29/day2/apt29_evals_day2_manual_2020-05-02035409.json
+)
+
+# Existence is not integrity: downstream code parses these JSON files, so a
+# truncated or edited tree must fail here rather than silently score against it.
+verify_extracted() {
+  local root="$1" relative expected
+  for relative in "${extracted_files[@]}"; do
+    expected="$(lock_sha "$relative")"
+    if [[ ! "$expected" =~ ^[0-9a-f]{64}$ ]]; then
+      printf 'Missing or invalid checksum for %s in %s\n' "$relative" "$lock_file" >&2
+      exit 1
+    fi
+    [[ -f "$root/$relative" ]] || return 1
+    printf '%s  %s\n' "$expected" "$root/$relative" | shasum -a 256 -c - >/dev/null || return 1
+  done
+}
+
+if verify_extracted "$data_dir"; then
   printf 'Verified dataset already extracted at %s/apt29\n' "$data_dir"
   exit 0
 fi
@@ -58,6 +78,11 @@ fi
 mkdir -p "$stage_dir/apt29/day1" "$stage_dir/apt29/day2"
 unzip -q "$day1_archive" -d "$stage_dir/apt29/day1"
 unzip -q "$day2_archive" -d "$stage_dir/apt29/day2"
+
+if ! verify_extracted "$stage_dir"; then
+  printf 'Extracted tree does not match %s — refusing to install it\n' "$lock_file" >&2
+  exit 1
+fi
 
 if [[ -e "$data_dir/apt29" ]]; then
   backup_dir="$data_dir/.apt29-previous"
