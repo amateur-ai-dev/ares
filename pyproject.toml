@@ -5,4 +5,5 @@ requires-python = ">=3.12"
 dependencies = [
     "mitreattack-python>=6.1.0",
     "openpyxl>=3.1.5",
+    "pyyaml>=6.0.3",
 ]

@@ -1,0 +1,380 @@
+schema_version: 1
+artifact: apt29-day1-edge-ground-truth
+incident:
+  name: APT29 ATT&CK Evaluations Round 2, Day 1
+  source_log: /Users/nithingowda/.ares/datasets/apt29/day1/apt29_evals_day1_manual_2020-05-01225525.json
+  source_sha256: dce651806007a20f6f4bac806dd6054e3361e0dd57a74ddd2f7cb5665d98c954
+  identity_scheme: source_sha256 + one_based_ndjson_line
+
+# Only events that an MVP predicate may relate are in the edge universe.
+# EID 1 is the canonical record for a process action; EID 3 for a connection;
+# EID 7 for a module load; EID 11 for a file write.  There are no alternate
+# canonical records in this key: an equivalence list is therefore empty unless
+# this source log is later reproduced with an explicitly mapped line identity.
+eligibility:
+  sysmon_event_ids: [1, 3, 7, 11]
+  hostname_required_for_every_predicate: true
+  canonical_action_records:
+    "1": ProcessCreate
+    "3": NetworkConnect
+    "7": ImageLoad
+    "11": FileCreate
+  equivalence_grammar:
+    canonical_reference: [source_sha256, one_based_ndjson_line]
+    alternate_references: []
+    note: "Event IDs 5 and all non-1/3/7/11 records are not interchangeable with these event identities."
+
+matching_algorithm:
+  - Resolve each endpoint to its canonical [source_sha256, one_based_ndjson_line] identity.
+  - Match only an identical [source, target, relation_type] triple whose endpoint Hostname values match.
+  - Deduplicate identical resolved triples before proposal or verification scoring.
+  - Exclude unmatched in-universe-looking emissions unless they resolve to a negative_confounder_pair; a matching negative counts against verification precision.
+observable_true_edge_set: "All true_edges below; no true edge in this artifact is marked telemetry-unobservable."
+
+true_edges:
+  - id: GT-D1-001
+    plan_steps: ["1.A", "1.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 373, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e13c-5eac-a903-000000000400}"}
+    target: {line: 650, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e144-5eac-ab03-000000000400}"}
+    acceptable_equivalences: []
+    note: "The screensaver payload's ProcessGuid is the parent of the interactive cmd.exe."
+  - id: GT-D1-002
+    plan_steps: ["1.A"]
+    direction: source_to_target
+    relation_type: PROCESS_OPENED_CONNECTION
+    source: {line: 373, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e13c-5eac-a903-000000000400}"}
+    target: {line: 567, event_id: 3, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e13c-5eac-a903-000000000400}"}
+    acceptable_equivalences: []
+    note: "The payload process opened 10.0.1.4:1234 to 192.168.0.5:1234."
+  - id: GT-D1-003
+    plan_steps: ["1.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 650, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e144-5eac-ab03-000000000400}"}
+    target: {line: 828, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e14e-5eac-ac03-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-004
+    plan_steps: ["3.A"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 373, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e13c-5eac-a903-000000000400}"}
+    target: {line: 3876, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e188-5eac-b003-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-005
+    plan_steps: ["3.A"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 3876, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e188-5eac-b003-000000000400}"}
+    target: {line: 3965, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e18b-5eac-b103-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-006
+    plan_steps: ["3.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 3876, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e188-5eac-b003-000000000400}"}
+    target: {line: 6640, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e3-5eac-b503-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-007
+    plan_steps: ["3.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 6640, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e3-5eac-b503-000000000400}"}
+    target: {line: 6747, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e3-5eac-b603-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-008
+    plan_steps: ["3.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 6747, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e3-5eac-b603-000000000400}"}
+    target: {line: 6930, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e4-5eac-b803-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-009
+    plan_steps: ["3.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 6930, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e4-5eac-b803-000000000400}"}
+    target: {line: 6963, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e4-5eac-b903-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-010
+    plan_steps: ["3.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 6930, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e4-5eac-b803-000000000400}"}
+    target: {line: 7534, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e5-5eac-ba03-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-011
+    plan_steps: ["3.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 7534, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e5-5eac-ba03-000000000400}"}
+    target: {line: 7578, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e5-5eac-bb03-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-012
+    plan_steps: ["3.B"]
+    direction: source_to_target
+    relation_type: PROCESS_OPENED_CONNECTION
+    source: {line: 6930, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e4-5eac-b803-000000000400}"}
+    target: {line: 7665, event_id: 3, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e4-5eac-b803-000000000400}"}
+    acceptable_equivalences: []
+    note: "The UAC-bypass PowerShell process opened 10.0.1.4:443 to 192.168.0.5:443."
+  - id: GT-D1-013
+    plan_steps: ["4.A"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 6930, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e1e4-5eac-b803-000000000400}"}
+    target: {line: 27185, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e23d-5eac-c603-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-014
+    plan_steps: ["4.A"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 27185, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e23d-5eac-c603-000000000400}"}
+    target: {line: 27219, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e23d-5eac-c703-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-015
+    plan_steps: ["4.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 27185, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e23d-5eac-c603-000000000400}"}
+    target: {line: 45305, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e2ac-5eac-cb03-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-016
+    plan_steps: ["4.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 27185, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e23d-5eac-c603-000000000400}"}
+    target: {line: 48961, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e2f2-5eac-d203-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-017
+    plan_steps: ["4.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 27185, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e23d-5eac-c603-000000000400}"}
+    target: {line: 49858, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e305-5eac-d303-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-018
+    plan_steps: ["6.A"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 27185, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e23d-5eac-c603-000000000400}"}
+    target: {line: 52209, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e342-5eac-d703-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-019
+    plan_steps: ["8.B", "8.C"]
+    direction: source_to_target
+    relation_type: WROTE_PATH_BEFORE_EXECUTION
+    source: {line: 92491, event_id: 11, Hostname: NASHUA.dmevals.local, TargetFilename: "C:\\Windows\\Temp\\python.exe"}
+    target: {line: 94132, event_id: 1, Hostname: NASHUA.dmevals.local, Image: "C:\\Windows\\Temp\\python.exe", ProcessGuid: "{5aa8ec29-e4ec-5eac-6803-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-020
+    plan_steps: ["8.C"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 53541, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e374-5eac-d803-000000000400}"}
+    target: {line: 93756, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e4d6-5eac-f303-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-021
+    plan_steps: ["8.C"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 94038, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e4eb-5eac-6703-000000000400}"}
+    target: {line: 94132, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e4ec-5eac-6803-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-022
+    plan_steps: ["8.C"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 94132, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e4ec-5eac-6803-000000000400}"}
+    target: {line: 94139, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e4ec-5eac-6903-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-023
+    plan_steps: ["8.C"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 102363, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e5b7-5eac-7603-000000000400}"}
+    target: {line: 102446, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e5b7-5eac-7703-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-024
+    plan_steps: ["8.C"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 102446, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e5b7-5eac-7703-000000000400}"}
+    target: {line: 102458, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e5b7-5eac-7803-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-025
+    plan_steps: ["9.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 102644, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e5b8-5eac-7903-000000000400}"}
+    target: {line: 103382, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e5e4-5eac-7a03-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-026
+    plan_steps: ["9.A", "9.B"]
+    direction: source_to_target
+    relation_type: WROTE_PATH_BEFORE_EXECUTION
+    source: {line: 103101, event_id: 11, Hostname: NASHUA.dmevals.local, TargetFilename: "C:\\Windows\\Temp\\Rar.exe"}
+    target: {line: 105507, event_id: 1, Hostname: NASHUA.dmevals.local, Image: "C:\\Windows\\Temp\\Rar.exe", ProcessGuid: "{5aa8ec29-e603-5eac-7b03-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-027
+    plan_steps: ["9.A", "9.C"]
+    direction: source_to_target
+    relation_type: WROTE_PATH_BEFORE_EXECUTION
+    source: {line: 103219, event_id: 11, Hostname: NASHUA.dmevals.local, TargetFilename: "C:\\Windows\\Temp\\sdelete64.exe"}
+    target: {line: 114683, event_id: 1, Hostname: NASHUA.dmevals.local, Image: "C:\\Windows\\Temp\\sdelete64.exe", ProcessGuid: "{5aa8ec29-e624-5eac-7f03-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-028
+    plan_steps: ["9.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 103382, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e5e4-5eac-7a03-000000000400}"}
+    target: {line: 105507, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e603-5eac-7b03-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-029
+    plan_steps: ["9.C"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 102644, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e5b8-5eac-7903-000000000400}"}
+    target: {line: 112664, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e618-5eac-7e03-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-030
+    plan_steps: ["9.C"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 112664, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e618-5eac-7e03-000000000400}"}
+    target: {line: 114683, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e624-5eac-7f03-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-031
+    plan_steps: ["9.C"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 112664, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e618-5eac-7e03-000000000400}"}
+    target: {line: 116739, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e63e-5eac-8203-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-032
+    plan_steps: ["9.C"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 112664, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e618-5eac-7e03-000000000400}"}
+    target: {line: 117661, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e655-5eac-8303-000000000400}"}
+    acceptable_equivalences: []
+  - id: GT-D1-033
+    plan_steps: ["10.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 183718, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e72f-5eac-f200-000000000500}"}
+    target: {line: 183900, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e72f-5eac-f400-000000000500}"}
+    acceptable_equivalences: []
+  - id: GT-D1-034
+    plan_steps: ["10.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 183900, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e72f-5eac-f400-000000000500}"}
+    target: {line: 185073, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e737-5eac-fa00-000000000500}"}
+    acceptable_equivalences: []
+  - id: GT-D1-035
+    plan_steps: ["10.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 185073, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e737-5eac-fa00-000000000500}"}
+    target: {line: 185395, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e737-5eac-fe00-000000000500}"}
+    acceptable_equivalences: []
+  - id: GT-D1-036
+    plan_steps: ["10.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 185395, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e737-5eac-fe00-000000000500}"}
+    target: {line: 185832, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e738-5eac-0001-000000000500}"}
+    acceptable_equivalences: []
+
+# These are true plan actions whose intended cross-event relation is absent
+# from the EID 1/3/7/11 predicate universe. They are excluded from scoring.
+telemetry_unobservable:
+  - id: U-D1-001
+    plan_steps: ["2.A"]
+    action: "In-process file discovery, collection, and Compress-Archive staging of Draft.Zip."
+    reason: "The existing PowerShell process and Draft.Zip FileCreate are present, but no eligible predicate records the in-process discovery/compression relation."
+  - id: U-D1-002
+    plan_steps: ["2.B"]
+    action: "Pupy download of Draft.Zip over the already-open C2 channel."
+    reason: "No distinct eligible Sysmon event identifies this application-layer exfiltration from the pre-existing connection."
+  - id: U-D1-003
+    plan_steps: ["3.C"]
+    action: "Removal of the UAC-bypass registry artifacts."
+    reason: "Registry activity is outside the EID 1/3/7/11 edge universe and has no scoreable predicate endpoint here."
+  - id: U-D1-004
+    plan_steps: ["4.C"]
+    action: "Invoke-Discovery's in-process reconnaissance commands."
+    reason: "The command runs inside the established PowerShell process; no usable eligible event-to-event relation binds the individual discoveries."
+  - id: U-D1-005
+    plan_steps: ["5.A", "5.B"]
+    action: "Creation of the persistence service and startup-folder mechanism."
+    reason: "The configuration writes are not an eligible relation; later boot activity cannot be linked to their specific originating configuration event."
+  - id: U-D1-006
+    plan_steps: ["6.B"]
+    action: "Get-PrivateKeys private-key harvest."
+    reason: "It ran within the session but generated no usable EID 1/3/7/11 relation for the harvested private keys."
+  - id: U-D1-007
+    plan_steps: ["6.C"]
+    action: "Meterpreter credential_collector password-hash dump."
+    reason: "No eligible event pair identifies the in-memory credential collection or returned result."
+  - id: U-D1-008
+    plan_steps: ["7.A"]
+    action: "Screen capture, clipboard collection, and keylogging."
+    reason: "These in-process collection actions have no usable eligible edge endpoints."
+  - id: U-D1-009
+    plan_steps: ["7.B"]
+    action: "Invoke-Exfil file collection/encryption and WebDAV exfiltration."
+    reason: "Related WebClient/rundll32 activity exists, but its initiating PowerShell relation is not represented by an eligible field join; temporal adjacency is insufficient."
+  - id: U-D1-010
+    plan_steps: ["8.A"]
+    action: "LDAP remote discovery and PowerShell remoting to NASHUA."
+    reason: "A wsmprovhost.exe record exists, but the initiator/LDAP query has no qualifying captured parent or connection relation."
+  - id: U-D1-011
+    plan_steps: ["10.A"]
+    action: "Boot-triggered javamtsup persistence service execution."
+    reason: "javamtsup.exe is recorded at line 132298, but its launching parent is absent from captured EID 1 telemetry; the service-configuration-to-launch edge is unobservable."
+
+negative_confounder_pairs:
+  - id: N-D1-001
+    plan_steps: []
+    confounder: "Only shared LogonId is 0x3e7 (SYSTEM); no eligible parent/child, path, or process-guid network join."
+    source: {line: 94038, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e4eb-5eac-6703-000000000400}", LogonId: "0x3e7"}
+    target: {line: 105762, event_id: 1, Hostname: NASHUA.dmevals.local, ProcessGuid: "{5aa8ec29-e604-5eac-7c03-000000000400}", LogonId: "0x3e7"}
+    not_a_true_edge: true
+  - id: N-D1-002
+    plan_steps: []
+    confounder: "Only shared LogonId is 0x3e7 (SYSTEM); both are unrelated background service children."
+    source: {line: 25098, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e238-5eac-c403-000000000400}", LogonId: "0x3e7"}
+    target: {line: 45827, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e2d4-5eac-cc03-000000000400}", LogonId: "0x3e7"}
+    not_a_true_edge: true
+  - id: N-D1-003
+    plan_steps: []
+    confounder: "Only shared LogonId is 0x3e4 (NETWORK SERVICE); no qualifying relation connects the two background processes."
+    source: {line: 38923, event_id: 1, Hostname: NEWYORK.dmevals.local, ProcessGuid: "{32aa854b-e28c-5eac-5403-000000000300}", LogonId: "0x3e4"}
+    target: {line: 41474, event_id: 1, Hostname: NEWYORK.dmevals.local, ProcessGuid: "{32aa854b-e28e-5eac-5503-000000000300}", LogonId: "0x3e4"}
+    not_a_true_edge: true
+  - id: N-D1-004
+    plan_steps: []
+    confounder: "Only shared LogonId is 0x3e5 (LOCAL SERVICE); this is never eligible for SAME_SESSION."
+    source: {line: 89529, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e43f-5eac-eb03-000000000400}", LogonId: "0x3e5"}
+    target: {line: 179342, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{47ab858c-e721-5eac-db00-000000000500}", LogonId: "0x3e5"}
+    not_a_true_edge: true
+
+unscored_composites:
+  - id: C-D1-001
+    plan_steps: ["3.B"]
+    annotation: "cmd.exe -> sdclt.exe -> control.exe -> hidden PowerShell -> HTTPS callback."
+    component_edges: [GT-D1-006, GT-D1-007, GT-D1-008, GT-D1-012]
+    scoring: excluded_no_mvp_composition_rule
+  - id: C-D1-002
+    plan_steps: ["8.B", "8.C", "9.A", "9.B", "9.C"]
+    annotation: "Upload python.exe, execute through PsExec, upload Rar/sdelete, archive data, and erase artifacts on NASHUA."
+    component_edges: [GT-D1-019, GT-D1-020, GT-D1-021, GT-D1-026, GT-D1-027, GT-D1-028, GT-D1-030]
+    scoring: excluded_no_mvp_composition_rule
+  - id: C-D1-003
+    plan_steps: ["10.B"]
+    annotation: "Startup persistence invokes hostui.bat, elevated hostui.exe, and successive PowerShell payloads."
+    component_edges: [GT-D1-033, GT-D1-034, GT-D1-035, GT-D1-036]
+    scoring: excluded_no_mvp_composition_rule
