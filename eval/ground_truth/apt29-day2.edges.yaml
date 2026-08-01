@@ -1,0 +1,287 @@
+schema_version: 1
+artifact: apt29-day2-edge-ground-truth
+incident:
+  name: APT29 ATT&CK Evaluations Round 2, Day 2
+  source_log: /Users/nithingowda/.ares/datasets/apt29/day2/apt29_evals_day2_manual_2020-05-02035409.json
+  source_sha256: fd4043c9ad2382f57da882476acb541332d2d19b60ad538572a8d4a070d59a89
+  identity_scheme: source_sha256 + one_based_ndjson_line
+
+# Only events that an MVP predicate may relate are in the edge universe.
+# EID 1 is the canonical record for a process action; EID 3 for a connection;
+# EID 7 for a module load; EID 11 for a file write. There are no alternate
+# canonical records in this key: an equivalence list is therefore empty unless
+# this source log is later reproduced with an explicitly mapped line identity.
+eligibility:
+  sysmon_event_ids: [1, 3, 7, 11]
+  hostname_required_for_every_predicate: true
+  canonical_action_records:
+    "1": ProcessCreate
+    "3": NetworkConnect
+    "7": ImageLoad
+    "11": FileCreate
+  equivalence_grammar:
+    canonical_reference: [source_sha256, one_based_ndjson_line]
+    alternate_references: []
+    note: "Event IDs 5 and all non-1/3/7/11 records are not interchangeable with these event identities."
+
+matching_algorithm:
+  - Resolve each endpoint to its canonical [source_sha256, one_based_ndjson_line] identity.
+  - Match only an identical [source, target, relation_type] triple whose endpoint Hostname values match.
+  - Deduplicate identical resolved triples before proposal or verification scoring.
+  - Exclude unmatched in-universe-looking emissions unless they resolve to a negative_confounder_pair; a matching negative counts against verification precision.
+observable_true_edge_set: "All true_edges below; no true edge in this artifact is marked telemetry-unobservable."
+
+true_edges:
+  - id: GT-D2-001
+    plan_steps: ["11.A"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 106653, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-275a-5ead-7305-000000000400}"}
+    target: {line: 108092, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-276e-5ead-7605-000000000400}"}
+    acceptable_equivalences: []
+    note: "The ADS-launched PowerShell stager spawned certutil.exe to decode kxwn.lock."
+  - id: GT-D2-002
+    plan_steps: ["11.A"]
+    direction: source_to_target
+    relation_type: PROCESS_OPENED_CONNECTION
+    source: {line: 106653, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-275a-5ead-7305-000000000400}"}
+    target: {line: 108431, event_id: 3, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-275a-5ead-7305-000000000400}"}
+    acceptable_equivalences: []
+    note: "The initial PowerShell stager opened 10.0.1.5:61076 to 192.168.0.4:443."
+  - id: GT-D2-003
+    plan_steps: ["11.A", "20.A"]
+    direction: source_to_target
+    relation_type: WROTE_PATH_BEFORE_EXECUTION
+    source: {line: 108343, event_id: 11, Hostname: UTICA.dmevals.local, TargetFilename: "C:\\Users\\dschrute\\AppData\\Roaming\\Microsoft\\kxwn.lock"}
+    target: {line: 482136, event_id: 7, Hostname: UTICA.dmevals.local, ImageLoaded: "C:\\Users\\dschrute\\AppData\\Roaming\\Microsoft\\kxwn.lock", ProcessGuid: "{8320f18b-2bcf-5ead-d200-000000000500}"}
+    acceptable_equivalences: []
+    note: "certutil wrote kxwn.lock; after logon, rundll32.exe invoked that same path as a DLL."
+  - id: GT-D2-004
+    plan_steps: ["14.A"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 148617, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-280d-5ead-8b05-000000000400}"}
+    target: {line: 149014, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-280e-5ead-8d05-000000000400}"}
+    acceptable_equivalences: []
+    note: "control.exe from the UAC-bypass chain spawned the hidden PoshC2 PowerShell stager."
+  - id: GT-D2-005
+    plan_steps: ["14.A"]
+    direction: source_to_target
+    relation_type: PROCESS_OPENED_CONNECTION
+    source: {line: 149014, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-280e-5ead-8d05-000000000400}"}
+    target: {line: 150346, event_id: 3, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-280e-5ead-8d05-000000000400}"}
+    acceptable_equivalences: []
+    note: "The high-integrity hidden PowerShell stager opened 10.0.1.5 to 192.168.0.4:443."
+  - id: GT-D2-006
+    plan_steps: ["14.A", "14.B"]
+    direction: source_to_target
+    relation_type: SAME_SESSION
+    source: {line: 149014, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-280e-5ead-8d05-000000000400}", LogonId: "0xa65039"}
+    target: {line: 156212, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-284d-5ead-9005-000000000400}", LogonId: "0xa65039"}
+    acceptable_equivalences: []
+    note: "The elevated callback and WMI credential-dump PowerShell action share dschrute's non-well-known interactive session; this proves only the named session relation."
+  - id: GT-D2-007
+    plan_steps: ["14.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 156212, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-284d-5ead-9005-000000000400}"}
+    target: {line: 156910, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-284e-5ead-9205-000000000400}"}
+    acceptable_equivalences: []
+    note: "The WMI-launched PowerShell created m.exe with the credential-dump arguments."
+  - id: GT-D2-008
+    plan_steps: ["14.B"]
+    direction: source_to_target
+    relation_type: WROTE_PATH_BEFORE_EXECUTION
+    source: {line: 156859, event_id: 11, Hostname: UTICA.dmevals.local, TargetFilename: "C:\\Windows\\System32\\m.exe"}
+    target: {line: 156910, event_id: 1, Hostname: UTICA.dmevals.local, Image: "C:\\Windows\\System32\\m.exe", ProcessGuid: "{8320f18b-284e-5ead-9205-000000000400}"}
+    acceptable_equivalences: []
+    note: "The credential-dump script wrote m.exe, then executed the same path one second later."
+  - id: GT-D2-009
+    plan_steps: ["16.C"]
+    direction: source_to_target
+    relation_type: PROCESS_OPENED_CONNECTION
+    source: {line: 149014, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-280e-5ead-8d05-000000000400}"}
+    target: {line: 301567, event_id: 3, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-280e-5ead-8d05-000000000400}"}
+    acceptable_equivalences: []
+    note: "The elevated PowerShell process opened the planned WinRM connection to NEWYORK (10.0.0.4:5985)."
+  - id: GT-D2-010
+    plan_steps: ["16.D"]
+    direction: source_to_target
+    relation_type: WROTE_PATH_BEFORE_EXECUTION
+    source: {line: 248573, event_id: 11, Hostname: NEWYORK.dmevals.local, TargetFilename: "C:\\Windows\\System32\\m.exe"}
+    target: {line: 265647, event_id: 1, Hostname: NEWYORK.dmevals.local, Image: "C:\\Windows\\System32\\m.exe", ProcessGuid: "{1f50f819-2989-5ead-d003-000000000300}"}
+    acceptable_equivalences: []
+    note: "The remoted session copied m.exe to NEWYORK, then executed that exact path for the KRBTGT dump."
+  - id: GT-D2-011
+    plan_steps: ["16.D"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 221840, event_id: 1, Hostname: NEWYORK.dmevals.local, ProcessGuid: "{1f50f819-2924-5ead-cc03-000000000300}"}
+    target: {line: 265647, event_id: 1, Hostname: NEWYORK.dmevals.local, ProcessGuid: "{1f50f819-2989-5ead-d003-000000000300}"}
+    acceptable_equivalences: []
+    note: "The WinRM provider process spawned the remotely invoked m.exe."
+  - id: GT-D2-012
+    plan_steps: ["18.A"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 149014, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-280e-5ead-8d05-000000000400}"}
+    target: {line: 364308, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2ad6-5ead-db05-000000000400}"}
+    acceptable_equivalences: []
+    note: "The elevated callback PowerShell spawned net.exe to map the OneDrive WebDAV drive."
+  - id: GT-D2-013
+    plan_steps: ["20.A"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 414125, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b7b-5ead-6200-000000000500}"}
+    target: {line: 454847, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b86-5ead-7b00-000000000500}"}
+    acceptable_equivalences: []
+    note: "The WMI event-subscription provider spawned one of the login-triggered SYSTEM PowerShell stagers."
+  - id: GT-D2-014
+    plan_steps: ["20.A"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 414125, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b7b-5ead-6200-000000000500}"}
+    target: {line: 459363, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b9a-5ead-9300-000000000500}"}
+    acceptable_equivalences: []
+    note: "The same WMI subscription spawned a second observed SYSTEM PowerShell stager."
+  - id: GT-D2-015
+    plan_steps: ["20.A"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 414125, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b7b-5ead-6200-000000000500}"}
+    target: {line: 459373, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b9a-5ead-9400-000000000500}"}
+    acceptable_equivalences: []
+    note: "The same WMI subscription spawned a third observed SYSTEM PowerShell stager."
+  - id: GT-D2-016
+    plan_steps: ["20.A"]
+    direction: source_to_target
+    relation_type: PROCESS_OPENED_CONNECTION
+    source: {line: 454847, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b86-5ead-7b00-000000000500}"}
+    target: {line: 461591, event_id: 3, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b86-5ead-7b00-000000000500}"}
+    acceptable_equivalences: []
+    note: "One login-triggered SYSTEM stager opened the PoshC2 callback to 192.168.0.4:443."
+  - id: GT-D2-017
+    plan_steps: ["20.A"]
+    direction: source_to_target
+    relation_type: PROCESS_OPENED_CONNECTION
+    source: {line: 459363, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b9a-5ead-9300-000000000500}"}
+    target: {line: 461699, event_id: 3, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b9a-5ead-9300-000000000500}"}
+    acceptable_equivalences: []
+    note: "A second login-triggered SYSTEM stager opened the PoshC2 callback to 192.168.0.4:443."
+  - id: GT-D2-018
+    plan_steps: ["20.A"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 468064, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2ba4-5ead-a300-000000000500}"}
+    target: {line: 481915, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2bcf-5ead-d200-000000000500}"}
+    acceptable_equivalences: []
+    note: "The login explorer.exe process spawned rundll32.exe for the Run-key DLL payload."
+  - id: GT-D2-019
+    plan_steps: ["20.A"]
+    direction: source_to_target
+    relation_type: PROCESS_OPENED_CONNECTION
+    source: {line: 481915, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2bcf-5ead-d200-000000000500}"}
+    target: {line: 523326, event_id: 3, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2bcf-5ead-d200-000000000500}"}
+    acceptable_equivalences: []
+    note: "The Run-key DLL's rundll32 host opened the callback connection to 192.168.0.4:443."
+  - id: GT-D2-020
+    plan_steps: ["20.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 459373, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b9a-5ead-9400-000000000500}"}
+    target: {line: 514976, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2c53-5ead-1d01-000000000500}"}
+    acceptable_equivalences: []
+    note: "The SYSTEM callback PowerShell spawned klist.exe for the planned ticket-cache purge."
+  - id: GT-D2-021
+    plan_steps: ["20.B"]
+    direction: source_to_target
+    relation_type: PROCESS_OPENED_CONNECTION
+    source: {line: 459363, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b9a-5ead-9300-000000000500}"}
+    target: {line: 522420, event_id: 3, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b9a-5ead-9300-000000000500}"}
+    acceptable_equivalences: []
+    note: "The SYSTEM callback PowerShell opened the planned WinRM connection to SCRANTON (10.0.1.4:5985)."
+  - id: GT-D2-022
+    plan_steps: ["20.B"]
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 527958, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{ac2fda3f-2cdd-5ead-6203-000000000400}"}
+    target: {line: 528390, event_id: 1, Hostname: SCRANTON.dmevals.local, ProcessGuid: "{ac2fda3f-2cdd-5ead-6303-000000000400}"}
+    acceptable_equivalences: []
+    note: "SCRANTON's WinRM provider spawned net.exe for the planned toby account creation."
+
+# These are true plan actions whose intended cross-event relation is absent
+# from the EID 1/3/7/11 predicate universe. They are excluded from scoring.
+telemetry_unobservable:
+  - id: U-D2-001
+    plan_steps: ["0"]
+    action: "Day-2 setup: RDP preparation, PoshC2 container/configuration work, payload copying, and manual schema edits."
+    reason: "These operator-side and file-preparation actions do not have a plan-scoped eligible event-to-event relation in the victim Sysmon universe."
+  - id: U-D2-002
+    plan_steps: ["12.A", "12.B", "12.C"]
+    action: "Timestomp, AV-product discovery, and installed-software registry discovery."
+    reason: "The operations run in the established callback; timestamp and registry/query results do not create an eligible cross-event relation."
+  - id: U-D2-003
+    plan_steps: ["13.A", "13.B", "13.C", "13.D"]
+    action: "Local computer, domain, user, and process enumeration through the callback."
+    reason: "These are in-process API/reconnaissance actions with no eligible relation binding each returned value to another event."
+  - id: U-D2-004
+    plan_steps: ["15.A"]
+    action: "Creation of the WMI event subscription for persistence."
+    reason: "The WMI configuration event is outside the EID 1/3/7/11 relation universe; the later children are scoreable only as the step-20 process relations above."
+  - id: U-D2-005
+    plan_steps: ["16.A", "16.B"]
+    action: "Domain-controller discovery and SID enumeration."
+    reason: "The queries and their returned values run in the established process and yield no eligible field-level edge."
+  - id: U-D2-006
+    plan_steps: ["17.A"]
+    action: "Local email collection."
+    reason: "No eligible event pair identifies the emails collected from the mail client."
+  - id: U-D2-007
+    plan_steps: ["17.B", "17.C"]
+    action: "Staging the HTML file and compressing/prepending GIF bytes into WindowsParentalControlMigration.tmp."
+    reason: "FileCreate records the output paths, but neither staging nor compression has a later eligible execution/load endpoint; temporal order alone is not an edge."
+  - id: U-D2-008
+    plan_steps: ["18.A"]
+    action: "Copying the staged archive to the mapped OneDrive drive."
+    reason: "The net.exe map-drive spawn is scoreable above, but no eligible relation identifies the subsequent WebDAV copy as this step's exfiltration."
+  - id: U-D2-009
+    plan_steps: ["19.A", "19.B", "19.C"]
+    action: "Reflective Sdelete injection and deletion of m.exe and staged collection artifacts."
+    reason: "Deletion and injection are not represented by an eligible EID 1/3/7/11 causal endpoint pair in this capture."
+
+negative_confounder_pairs:
+  - id: N-D2-001
+    plan_steps: []
+    confounder: "Only shared LogonId is 0x3e7 (SYSTEM); the WMI provider and unrelated WerSvc child have no eligible parent/child, path, or process-guid network join."
+    source: {line: 414125, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2b7b-5ead-6200-000000000500}", LogonId: "0x3e7"}
+    target: {line: 532192, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2cdb-5ead-3001-000000000500}", LogonId: "0x3e7"}
+    not_a_true_edge: true
+  - id: N-D2-002
+    plan_steps: []
+    confounder: "Only shared LogonId is 0x3e4 (NETWORK SERVICE); these separately created WMI providers are not connected by any qualifying relation."
+    source: {line: 107231, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-275f-5ead-7505-000000000400}", LogonId: "0x3e4"}
+    target: {line: 156154, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-284d-5ead-8f05-000000000400}", LogonId: "0x3e4"}
+    not_a_true_edge: true
+  - id: N-D2-003
+    plan_steps: []
+    confounder: "Only shared LogonId is 0x3e5 (LOCAL SERVICE); this is never eligible for SAME_SESSION."
+    source: {line: 13254, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2685-5ead-5905-000000000400}", LogonId: "0x3e5"}
+    target: {line: 364728, event_id: 1, Hostname: UTICA.dmevals.local, ProcessGuid: "{8320f18b-2ada-5ead-dc05-000000000400}", LogonId: "0x3e5"}
+    not_a_true_edge: true
+
+unscored_composites:
+  - id: C-D2-001
+    plan_steps: ["11.A", "20.A"]
+    annotation: "ADS PowerShell stager decodes kxwn.lock, then a later Run-key login invokes that DLL through rundll32 and it calls back."
+    component_edges: [GT-D2-001, GT-D2-002, GT-D2-003, GT-D2-018, GT-D2-019]
+    scoring: excluded_no_mvp_composition_rule
+  - id: C-D2-002
+    plan_steps: ["14.A", "14.B", "16.C", "16.D"]
+    annotation: "UAC-bypass callback continues in the same user session, establishes WinRM to NEWYORK, copies m.exe, and runs the KRBTGT dump."
+    component_edges: [GT-D2-004, GT-D2-005, GT-D2-006, GT-D2-007, GT-D2-008, GT-D2-009, GT-D2-010, GT-D2-011]
+    scoring: excluded_no_mvp_composition_rule
+  - id: C-D2-003
+    plan_steps: ["20.A", "20.B"]
+    annotation: "The WMI persistence subscription launches SYSTEM PowerShell callbacks; one purges tickets and opens WinRM to SCRANTON, where net.exe creates the account."
+    component_edges: [GT-D2-013, GT-D2-014, GT-D2-015, GT-D2-016, GT-D2-017, GT-D2-020, GT-D2-021, GT-D2-022]
+    scoring: excluded_no_mvp_composition_rule
