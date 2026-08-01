@@ -9,7 +9,10 @@ from .predicates import PROCESS_OPENED_CONNECTION, SPAWNED
 
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-OLLAMA_MODEL = "foundation-sec-8b"
+# Foundation-Sec-8B-Reasoning proved unusable for structured extraction here: it
+# narrates every event in its thinking channel and returns empty content. Swapped
+# under deadline, recorded as a deviation from MASTER_PLAN section 5.
+OLLAMA_MODEL = "granite4:3b"
 CODEX_COMPANION = "/Users/nithingowda/.claude/plugins/cache/openai-codex/codex/1.0.6/scripts/codex-companion.mjs"
 SUPPORTED_RELATIONS = frozenset({SPAWNED, PROCESS_OPENED_CONNECTION})
 
@@ -125,12 +128,40 @@ def parse_proposals(raw_text, allowed_event_ids):
     return proposals, discarded
 
 
-def _ollama_response(prompt, seed):
+# Constraining generation to this schema is not a nicety. Unconstrained, a
+# reasoning-tuned model narrates its way through the events one at a time and
+# never reaches the answer: measured at 1,500 tokens of thinking and an EMPTY
+# content field. The schema forces the first token to be structure.
+PROPOSAL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "edges": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "source_event_id": {"type": "string"},
+                    "target_event_id": {"type": "string"},
+                    "relation_type": {"type": "string", "enum": [SPAWNED, PROCESS_OPENED_CONNECTION]},
+                    "rationale": {"type": "string"},
+                },
+                "required": ["source_event_id", "target_event_id", "relation_type", "rationale"],
+            },
+        }
+    },
+    "required": ["edges"],
+}
+
+
+def _ollama_response(prompt, seed, model=None):
     payload = json.dumps({
-        "model": OLLAMA_MODEL,
+        "model": model or OLLAMA_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "options": {"num_ctx": 16384, "temperature": 0, "seed": seed},
+        "format": PROPOSAL_SCHEMA,
+        # Without a cap a rambling model runs to the context limit; with one and
+        # no schema it is cut off mid-preamble. Both are needed together.
+        "options": {"num_ctx": 16384, "temperature": 0, "seed": seed, "num_predict": 2000},
     }).encode("utf-8")
     request = urllib.request.Request(
         OLLAMA_URL,
@@ -172,10 +203,10 @@ def _frontier_response(prompt):
     return completed.stdout
 
 
-def propose_with_counts(arm, prompt, allowed_event_ids, seed=0):
+def propose_with_counts(arm, prompt, allowed_event_ids, seed=0, model=None):
     """Run one backend and preserve raw text for bounded smoke-run diagnostics."""
     if arm == "local":
-        raw_text = _ollama_response(prompt, seed)
+        raw_text = _ollama_response(prompt, seed, model)
     elif arm == "frontier":
         raw_text = _frontier_response(prompt)
     else:
@@ -184,6 +215,6 @@ def propose_with_counts(arm, prompt, allowed_event_ids, seed=0):
     return ProposalResponse(proposals, discarded, raw_text)
 
 
-def propose(arm, prompt, allowed_event_ids, seed=0):
+def propose(arm, prompt, allowed_event_ids, seed=0, model=None):
     """Return parsed proposals for one prompt slice."""
-    return propose_with_counts(arm, prompt, allowed_event_ids, seed).proposals
+    return propose_with_counts(arm, prompt, allowed_event_ids, seed, model).proposals

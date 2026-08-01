@@ -30,6 +30,12 @@ def process_event(host, guid, parent=None, event_time="2020-05-01 00:00:00"):
 
 
 class ProposerParsingTests(unittest.TestCase):
+    def test_discards_malformed_json(self):
+        proposals, discarded = parse_proposals("[not valid JSON]", {"10", "11"})
+
+        self.assertEqual(proposals, [])
+        self.assertEqual(discarded, 1)
+
     def test_discards_malformed_json_entries(self):
         raw = json.dumps([
             {

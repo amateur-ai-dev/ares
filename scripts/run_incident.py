@@ -4,6 +4,7 @@
 import argparse
 import sqlite3
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
@@ -29,21 +30,22 @@ def main():
     args = parser.parse_args()
 
     args.db.parent.mkdir(parents=True, exist_ok=True)
+    run_incident_id = f"{args.incident}:{args.arm}:{uuid.uuid4().hex}"
     connection = sqlite3.connect(args.db)
     try:
         initialize(connection)
         counts = run_incident(
             connection,
-            incident_id=args.incident,
+            incident_id=run_incident_id,
             log_path=LOGS[args.incident],
             arm=args.arm,
             limit_chunks=args.limit_chunks,
         )
-        metrics = score_run(connection, args.key, args.incident)
+        metrics = score_run(connection, args.key, run_incident_id)
     finally:
         connection.close()
 
-    print(f"Incident: {args.incident} ({args.arm} arm)")
+    print(f"Incident: {args.incident} ({args.arm} arm, run {run_incident_id.rsplit(':', 1)[1]})")
     print(
         "Run counts: "
         f"proposals={counts.proposals_made}, badged={counts.badged}, "
@@ -64,6 +66,22 @@ def main():
         f"({metrics['correct_badged_edge_count']}/{denominator})"
     )
     print(f"Key edges out of scope (SAME_SESSION/WROTE_PATH_BEFORE_EXECUTION): {metrics['out_of_scope_for_build_count']}")
+    print(
+        f"Badges the key cannot speak to: {metrics['out_of_universe_badge_count']} "
+        f"(both events absent from the key — real relations, outside the attack narrative)"
+    )
+    print(
+        f"  wrong badges caught in-universe: {metrics['in_universe_wrong_badge_count']}, "
+        f"on hand-listed confounder pairs: {metrics['confounder_badge_count']}"
+    )
+    # Do not let a clean precision figure be read as a hard-won result.
+    print(
+        "\nHow to read verification precision: SPAWNED and PROCESS_OPENED_CONNECTION are\n"
+        "deterministic joins, so on well-formed logs they are correct by construction and\n"
+        "this figure is expected to sit at 100%. It is a floor, not an achievement — any\n"
+        "dip means a real defect. The genuine test of precision is the confounded-negative\n"
+        "fixture suite, which found 8 false-VERIFIED paths a clean incident run never hits."
+    )
 
 
 if __name__ == "__main__":

@@ -58,9 +58,22 @@ def score_claims(key_path: Path, claims):
         for edge in key.get("negative_confounder_pairs", [])
     }
 
+    # The key enumerates the attack narrative, not every true relation in the log.
+    # A badge on two events the key never mentions is therefore usually a real
+    # background process spawn, not an error — but it must be counted and shown,
+    # not silently dropped, or the reader cannot tell how much of the output the
+    # key was even able to speak to.
+    key_endpoints = {
+        endpoint[0]
+        for edge in observable
+        for endpoint in (_endpoint(edge["source"]), _endpoint(edge["target"]))
+    }
+
     proposed = set()
     badged = set()
     negative_badges = set()
+    in_universe_not_in_key = set()
+    out_of_universe_badges = set()
     for claim in claims:
         relation_type = claim.get("predicate_type")
         if relation_type not in PREDICATE_BADGES or relation_type in CUT_PREDICATES:
@@ -76,13 +89,25 @@ def score_claims(key_path: Path, claims):
                 badged.add(true_key_to_id[badge_key])
             elif badge_key is not None and badge_key[:2] in negative_pairs:
                 negative_badges.add(badge_key)
+            elif badge_key is not None:
+                # Both endpoints are events the key does describe, yet it records no
+                # such edge between them. That is the only case on a real incident
+                # where this metric can catch a wrong badge without a hand-listed
+                # confounder, so it counts against precision.
+                if badge_key[0][0] in key_endpoints and badge_key[1][0] in key_endpoints:
+                    in_universe_not_in_key.add(badge_key)
+                else:
+                    out_of_universe_badges.add(badge_key)
 
     denominator = len(observable)
     correct_badges = len(badged)
-    false_badges = len(negative_badges)
+    false_badges = len(negative_badges) + len(in_universe_not_in_key)
     total_badges = correct_badges + false_badges
     precision = correct_badges / total_badges if total_badges else 0.0
     return {
+        "out_of_universe_badge_count": len(out_of_universe_badges),
+        "in_universe_wrong_badge_count": len(in_universe_not_in_key),
+        "confounder_badge_count": len(negative_badges),
         "observable_true_edge_count": denominator,
         "out_of_scope_for_build_count": len(out_of_scope),
         "proposal_recall": len(proposed) / denominator if denominator else 0.0,
