@@ -27,6 +27,10 @@ def main():
     parser.add_argument("--db", type=Path, default=Path("data/ares.db"))
     parser.add_argument("--limit-chunks", type=int)
     parser.add_argument("--key", type=Path, required=True)
+    # Which local model proposes. MASTER_PLAN section 5 names Foundation-Sec-8B;
+    # revision-8 deviation notes why the default differs. Kept a flag so a
+    # different local model is a re-run, not an edit.
+    parser.add_argument("--model", help="override the local proposing model")
     args = parser.parse_args()
 
     args.db.parent.mkdir(parents=True, exist_ok=True)
@@ -40,6 +44,7 @@ def main():
             log_path=LOGS[args.incident],
             arm=args.arm,
             limit_chunks=args.limit_chunks,
+            model=args.model,
         )
         metrics = score_run(connection, args.key, run_incident_id)
     finally:

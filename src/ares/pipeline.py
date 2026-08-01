@@ -167,6 +167,7 @@ def run_incident(
     seed=0,
     run_id=None,
     propose_chunk=None,
+    model=None,
 ):
     """Run one proposing arm over an incident and return its terminal proposal counts."""
     del key_path
@@ -181,7 +182,7 @@ def run_incident(
         allowed_event_ids = {candidate.line_number for candidate in chunk}
         prompt = render_prompt([render_candidate(candidate) for candidate in chunk])
         if propose_chunk is None:
-            response = propose_with_counts(arm, prompt, allowed_event_ids, seed)
+            response = propose_with_counts(arm, prompt, allowed_event_ids, seed, model)
             proposals = response.proposals
             discarded = response.discarded_as_malformed
         else:
