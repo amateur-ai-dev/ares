@@ -1,5 +1,14 @@
 # APT29 Day 1 ground-truth audit sample
 
+> **How to use this file.** Ten edges from the day 1 key, chosen at random.
+> For each, compare the values shown and tick one box. Put an `x` between the
+> brackets like `- [x]`. No security knowledge needed — every check is a
+> comparison you can do by eye. Roughly two minutes each.
+>
+> Note: `â€®` in a filename is a right-to-left override character. It is not
+> corruption — it is the masquerading trick from step 1.A, which makes a `.scr`
+> file display as `.doc`.
+
 Random sample: `random.Random(20260731).sample(true_edge_ids, 10)`. Each event
 identity is the one-based line number in the SHA-256-pinned source log recorded
 in `apt29-day1.edges.yaml`. For EID 3, this corpus has no `CommandLine` or
@@ -31,6 +40,13 @@ Claimed relation: `PROCESS_OPENED_CONNECTION`.
 
 Check: the two `ProcessGuid` values and the host match exactly; the second record is the payload's port-1234 connection.
 
+
+**Your verdict:**
+
+- [ ] correct — the values match, this edge is real
+- [ ] wrong — they do not match
+- [ ] unsure — ambiguous, do not score this edge
+
 ## GT-D1-018 — elevated PowerShell spawned AccessChk
 
 Plan step `6.A`; command: `& "C:\Program Files\SysinternalsSuite\accesschk.exe"`.
@@ -56,6 +72,13 @@ ParentProcessGuid: {47ab858c-e23d-5eac-c603-000000000400}
 Claimed relation: `SPAWNED`.
 
 Check: the target's `ParentProcessGuid` is exactly the source's `ProcessGuid` on the same host.
+
+
+**Your verdict:**
+
+- [ ] correct — the values match, this edge is real
+- [ ] wrong — they do not match
+- [ ] unsure — ambiguous, do not score this edge
 
 ## GT-D1-016 — elevated PowerShell spawned the Draft.Zip deletion tool
 
@@ -83,6 +106,13 @@ Claimed relation: `SPAWNED`.
 
 Check: compare the target's parent GUID with the PowerShell process GUID; the target command explicitly names Draft.Zip.
 
+
+**Your verdict:**
+
+- [ ] correct — the values match, this edge is real
+- [ ] wrong — they do not match
+- [ ] unsure — ambiguous, do not score this edge
+
 ## GT-D1-034 — startup PowerShell spawned hostui.exe
 
 Plan step `10.B`; command: `Trigger the Startup Folder persistence by logging in to Windows SCRANTON`.
@@ -108,6 +138,13 @@ ParentProcessGuid: {47ab858c-e72f-5eac-f400-000000000500}
 Claimed relation: `SPAWNED`.
 
 Check: the PowerShell command says it starts hostui.exe, and the hostui event names that PowerShell GUID as parent.
+
+
+**Your verdict:**
+
+- [ ] correct — the values match, this edge is real
+- [ ] wrong — they do not match
+- [ ] unsure — ambiguous, do not score this edge
 
 ## GT-D1-008 — control.exe spawned the hidden UAC-bypass PowerShell
 
@@ -135,6 +172,13 @@ Claimed relation: `SPAWNED`.
 
 Check: the target is the hidden bypass PowerShell shown in the plan, and its parent GUID equals control.exe's process GUID.
 
+
+**Your verdict:**
+
+- [ ] correct — the values match, this edge is real
+- [ ] wrong — they do not match
+- [ ] unsure — ambiguous, do not score this edge
+
 ## GT-D1-033 — startup cmd.exe spawned its PowerShell helper
 
 Plan step `10.B`; command: `Trigger the Startup Folder persistence by logging in to Windows SCRANTON`.
@@ -160,6 +204,13 @@ ParentProcessGuid: {47ab858c-e72f-5eac-f200-000000000500}
 Claimed relation: `SPAWNED`.
 
 Check: `hostui.bat` runs under cmd.exe, whose GUID is the direct parent GUID of the PowerShell helper.
+
+
+**Your verdict:**
+
+- [ ] correct — the values match, this edge is real
+- [ ] wrong — they do not match
+- [ ] unsure — ambiguous, do not score this edge
 
 ## GT-D1-029 — NASHUA Python agent spawned cmd.exe for cleanup
 
@@ -187,6 +238,13 @@ Claimed relation: `SPAWNED`.
 
 Check: the cmd.exe target has the Python agent's exact process GUID in `ParentProcessGuid`.
 
+
+**Your verdict:**
+
+- [ ] correct — the values match, this edge is real
+- [ ] wrong — they do not match
+- [ ] unsure — ambiguous, do not score this edge
+
 ## GT-D1-005 — Pupy's second cmd.exe spawned PowerShell
 
 Plan step `3.A`; command sequence: `[pupy] > shell` then `[pupy CMD] > powershell`.
@@ -212,6 +270,13 @@ ParentProcessGuid: {47ab858c-e188-5eac-b003-000000000400}
 Claimed relation: `SPAWNED`.
 
 Check: the target command is literally `powershell`, and its parent GUID is the cmd.exe GUID.
+
+
+**Your verdict:**
+
+- [ ] correct — the values match, this edge is real
+- [ ] wrong — they do not match
+- [ ] unsure — ambiguous, do not score this edge
 
 ## GT-D1-012 — hidden UAC-bypass PowerShell opened the HTTPS C2 connection
 
@@ -239,6 +304,13 @@ Claimed relation: `PROCESS_OPENED_CONNECTION`.
 
 Check: the connection record reuses the hidden PowerShell process GUID and has the plan's port 443 destination.
 
+
+**Your verdict:**
+
+- [ ] correct — the values match, this edge is real
+- [ ] wrong — they do not match
+- [ ] unsure — ambiguous, do not score this edge
+
 ## GT-D1-035 — hostui.exe spawned the registry-reading PowerShell
 
 Plan step `10.B`; command: `Trigger the Startup Folder persistence by logging in to Windows SCRANTON`.
@@ -264,3 +336,10 @@ ParentProcessGuid: {47ab858c-e737-5eac-fa00-000000000500}
 Claimed relation: `SPAWNED`.
 
 Check: the target's parent GUID is hostui.exe's process GUID, so the registry-reading PowerShell is a direct child.
+
+
+**Your verdict:**
+
+- [ ] correct — the values match, this edge is real
+- [ ] wrong — they do not match
+- [ ] unsure — ambiguous, do not score this edge
