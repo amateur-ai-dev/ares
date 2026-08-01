@@ -204,5 +204,12 @@ def run_incident(
                 counts = replace(counts, refuted=counts.refuted + 1)
             else:
                 counts = replace(counts, aporias=counts.aporias + 1)
+        # Commit per chunk, not once at the end. A run is tens of minutes of model
+        # calls; committing only on success means any interruption discards all of
+        # it, and the frontier arm is hours long. Each chunk is independent, so a
+        # partial run is still usable evidence.
+        connection.commit()
+        print(f"  chunk {chunk_index + 1}: {counts.proposals_made} proposals, "
+              f"{counts.badged} badged, {counts.aporias} aporias", flush=True)
     connection.commit()
     return counts
