@@ -46,7 +46,7 @@ The payload process opened 10.0.1.4:1234 to 192.168.0.5:1234.
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -86,7 +86,7 @@ B: 2020-05-01 23:04:34  SCRANTON.dmevals.local
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -126,7 +126,7 @@ B: 2020-05-01 23:03:14  SCRANTON.dmevals.local
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -166,7 +166,7 @@ B: 2020-05-01 23:21:27  SCRANTON.dmevals.local
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -206,7 +206,7 @@ B: 2020-05-01 22:58:44  SCRANTON.dmevals.local
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -246,7 +246,7 @@ B: 2020-05-01 23:21:19  SCRANTON.dmevals.local
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -286,7 +286,7 @@ B: 2020-05-01 23:16:40  NASHUA.dmevals.local
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -326,7 +326,7 @@ B: 2020-05-01 22:57:15  SCRANTON.dmevals.local
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -367,7 +367,7 @@ The UAC-bypass PowerShell process opened 10.0.1.4:443 to 192.168.0.5:443.
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -407,7 +407,7 @@ B: 2020-05-01 23:21:27  SCRANTON.dmevals.local
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 

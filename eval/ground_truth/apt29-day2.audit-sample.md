@@ -47,7 +47,7 @@ The ADS-launched PowerShell stager spawned certutil.exe to decode kxwn.lock.
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -88,14 +88,14 @@ The elevated PowerShell process opened the planned WinRM connection to NEWYORK (
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
 
 ---
 
-## GT-D2-008 — powershell.exe wrote the file that m.exe later ran
+## GT-D2-008 — powershell.exe wrote the file that was later run as m.exe
 
 From attack step `14.B`. Relation claimed: `WROTE_PATH_BEFORE_EXECUTION`.
 
@@ -111,7 +111,7 @@ B.  m.exe   (log line 156910)
     C:\Windows\System32\m.exe
 ```
 
-**Are A and B identical?** If yes, powershell.exe wrote the file that m.exe later ran — the edge is right. Ignore every other value in the log; this one comparison is the whole check.
+**Are A and B identical?** If yes, powershell.exe wrote the file that was later run as m.exe — the edge is right. Ignore every other value in the log; this one comparison is the whole check.
 
 <details><summary>More context, only if you want it</summary>
 
@@ -129,7 +129,7 @@ The credential-dump script wrote m.exe, then executed the same path one second l
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -170,7 +170,7 @@ The Run-key DLL's rundll32 host opened the callback connection to 192.168.0.4:44
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -212,7 +212,7 @@ The SYSTEM callback PowerShell spawned klist.exe for the planned ticket-cache pu
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -254,7 +254,7 @@ control.exe from the UAC-bypass chain spawned the hidden PoshC2 PowerShell stage
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -295,7 +295,7 @@ One login-triggered SYSTEM stager opened the PoshC2 callback to 192.168.0.4:443.
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
@@ -337,14 +337,14 @@ The same WMI subscription spawned a third observed SYSTEM PowerShell stager.
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 
 
 ---
 
-## GT-D2-003 — certutil.exe wrote the file that rundll32.exe later ran
+## GT-D2-003 — certutil.exe wrote the file that rundll32.exe later loaded
 
 From attack step `11.A, 20.A`. Relation claimed: `WROTE_PATH_BEFORE_EXECUTION`.
 
@@ -356,11 +356,11 @@ A.  certutil.exe   (log line 108343)
     C:\Users\dschrute\AppData\Roaming\Microsoft\kxwn.lock
 
 B.  rundll32.exe   (log line 482136)
-    the file that was then run:
-    C:\Windows\System32\rundll32.exe
+    the file it loaded as a module:
+    C:\Users\dschrute\AppData\Roaming\Microsoft\kxwn.lock
 ```
 
-**Are A and B identical?** If yes, certutil.exe wrote the file that rundll32.exe later ran — the edge is right. Ignore every other value in the log; this one comparison is the whole check.
+**Are A and B identical?** If yes, certutil.exe wrote the file that rundll32.exe later loaded — the edge is right. Ignore every other value in the log; this one comparison is the whole check.
 
 <details><summary>More context, only if you want it</summary>
 
@@ -419,7 +419,7 @@ The elevated callback and WMI credential-dump PowerShell action share dschrute's
 
 **Your verdict:**
 
-- [ ] MATCH — the two values are identical
+- [x] MATCH — the two values are identical
 - [ ] NO MATCH — they differ
 - [ ] unsure
 

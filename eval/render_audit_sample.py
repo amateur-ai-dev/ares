@@ -40,14 +40,25 @@ COMPARISONS = {
         "b_label": "its logon session",
         "means": "{a} and {b} ran in the same logged-in session",
     },
+    # b_field depends on how the written file was used, per MASTER_PLAN 2.1:
+    # EID 1 executed it as a process (Image), EID 7 loaded it as a module
+    # (ImageLoaded, with Image being the *hosting* process). Reading Image on an
+    # EID 7 target is the confusion 2.1 names as mandatory fixture 6 — it makes
+    # the check compare a DLL path against rundll32.exe and look like a mismatch.
     "WROTE_PATH_BEFORE_EXECUTION": {
         "a_field": "TargetFilename",
         "a_label": "the file it wrote",
-        "b_field": "Image",
-        "b_label": "the file that was then run",
-        "means": "{a} wrote the file that {b} later ran",
+        "b_field": {1: "Image", 7: "ImageLoaded"},
+        "b_label": {1: "the file that was then run", 7: "the file it loaded as a module"},
+        "means": {1: "{a} wrote the file that was later run as {b}",
+                  7: "{a} wrote the file that {b} later loaded"},
     },
 }
+
+
+def pick(spec, event):
+    """Resolve a field/label that varies by the event's Sysmon event id."""
+    return spec[event.get("EventID")] if isinstance(spec, dict) else spec
 
 VERDICT = (
     "**Your verdict:**\n\n"
@@ -79,9 +90,10 @@ def render(edge, events):
     rule = COMPARISONS.get(edge["relation_type"])
     source = events[edge["source"]["line"]]
     target = events[edge["target"]["line"]]
-    a_name, b_name = short_name(source), short_name(target)
-
-    out = [f"## {edge['id']} — {rule['means'].format(a=a_name, b=b_name)}", ""]
+    b_field, b_label = pick(rule["b_field"], target), pick(rule["b_label"], target)
+    a_name = short_name(source)
+    means = pick(rule["means"], target).format(a=a_name, b=short_name(target))
+    out = [f"## {edge['id']} — {means}", ""]
     out.append(f"From attack step `{', '.join(edge.get('plan_steps') or ['—'])}`. "
                f"Relation claimed: `{edge['relation_type']}`.")
     out += ["", "### Compare these two values", "", "```text"]
@@ -89,11 +101,11 @@ def render(edge, events):
     out.append(f"    {rule['a_label']}:")
     out.append(f"    {source.get(rule['a_field'], '<missing>')}")
     out.append("")
-    out.append(f"B.  {b_name}   (log line {edge['target']['line']})")
-    out.append(f"    {rule['b_label']}:")
-    out.append(f"    {target.get(rule['b_field'], '<missing>')}")
+    out.append(f"B.  {short_name(target)}   (log line {edge['target']['line']})")
+    out.append(f"    {b_label}:")
+    out.append(f"    {target.get(b_field, '<missing>')}")
     out += ["```", ""]
-    out.append(f"**Are A and B identical?** If yes, {rule['means'].format(a=a_name, b=b_name)} "
+    out.append(f"**Are A and B identical?** If yes, {means} "
                f"— the edge is right. Ignore every other value in the log; this one "
                f"comparison is the whole check.")
     out += ["", "<details><summary>More context, only if you want it</summary>", ""]
