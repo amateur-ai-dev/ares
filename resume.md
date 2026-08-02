@@ -2,74 +2,84 @@
 
 > Living status snapshot. Update on any significant change. Complements `docs/MASTER_PLAN.md` (intent) — this is live state.
 
-**Last updated:** 2026-08-02
+**Last updated:** 2026-08-02 (evening — both days scored on frontier)
 
 ---
 
-## 🔖 RESUME HERE (2026-08-02 — harness PROVEN at 66.7% on the frontier arm; local arm unresolved)
+## 🔖 RESUME HERE (2026-08-02 evening — BOTH DAYS SCORED on frontier; local proven on day 1 only)
 
 **Deadline extended by 24h on 2026-08-02.** Nithin is separately preparing a paper (drafted, `docs/PAPER.md`) and a deck (template not yet supplied).
 
-### The headline result
+### The headline result — frontier arm clears target on TWO incidents
 
-**Day 1, frontier arm (Codex), inverted pipeline:**
-```
-edges-enumerated=794  edges-verified=794  verified-edges-shown=300  selections=27
-Selection recall:       66.7% (22/33)
-Verification precision: 100.0% (33/33)
-Verified-edge recall:   66.7% (22/33)
-```
-**Above the 50–60% target, against a 78% structural ceiling, with zero false verified.** 27 selections for 22 correct — disciplined, not carpet-bombed. The harness is feasible; the architecture is not the constraint.
+| Day | Window shown | Selection recall | Precision | Picks | Hit rate |
+|---|---|---|---|---|---|
+| 1 | 300 of 794 | **66.7%** (22/33) | 100% (33/33) | 27 | 81% |
+| 2 | 300 of 1704 | 16.7% (3/18) | 100% (18/18) | 6 | window-capped, void |
+| 2 | **1500 of 1704** | **55.6%** (10/18) | 100% (18/18) | 29 | 34% |
 
-**This is day 1 (the dev/practice incident) and it has now been seen. Day 2 remains UNRUN and single-shot.** The 66.7% is a feasibility figure, not the scored result.
+Both days above the 50–60% target. **Verification precision was 100% in every single run performed today** — two arms, four window sizes, twelve runs, not one false VERIFIED badge. That is the architecture's core claim and it held under every condition, including runs that failed at everything else.
 
-### The inversion — the single most important change (commit `3d18191`)
+### Local arm — works, but only small-batch and only proven on day 1
 
-The pipeline had the division of labour backwards, and **the spec Claude wrote for Terra is what put it that way** — it asked the model to *discover* edges by spotting GUID matches across raw events. That is exact string matching: the task an LLM is worst at and code is perfect at. Measured: 794 edges derivable deterministically on day 1; the model found 3.
+| Day | Batch | Selection recall | Precision | Picks | Note |
+|---|---|---|---|---|---|
+| 1 | **25** | **51.5%** (17/33) | 100% | 50 | clears target at its floor |
+| 1 | 75 | 33.3% (11/33) | 100% | 51 | |
+| 1 | 100 | 27.3% (9/33) | 100% | 28 | |
+| 1 | 300 | 0% | 100% | 0 | well-formed EMPTY array |
+| 2 | 25, 300 window | 11.1% (2/18) | 100% | 116 | window-capped, void |
+| 2 | 25, 1500 window | **NO SCORE** | — | 545 | killed at batch 43/60, ~4h45m in |
 
-Now: **tools enumerate and verify every edge; the model selects which verified edges are the attack.** This is what §8 Phase 1 always described. Selections are held in memory and deliberately kept OUT of the claims table, so a model's opinion about relevance never shares space with a proven relation. Effect on day 1: selection recall 0% → 24.2% on a 25-edge smoke, then 66.7% on the full frontier run.
+Model: `qwen2.5:7b-instruct`. **Batching is what unlocked the local arm.** At 300 edges in one call a 7B returns `{ "selections": [] }` — well-formed, deliberate, empty. It abstains rather than fails. Split into 25s, the same model scores 51.5%. Deployment shape, not capability.
 
-It also collapsed 25 model calls per incident into **one**. Claude's "1.5–2 hours" estimate was stale by two orders of magnitude — it came from the old design and was not recomputed when the design changed.
+**More context did NOT help** — recall falls monotonically as batch grows (51.5 → 33.3 → 27.3 → 0). Hypothesis tested and refuted.
 
-### Local arm — genuinely unresolved, do not conclude "local models can't do this"
+### THE most important finding: the prioritiser is the bottleneck, not the model
 
-| Model | Design | Result |
-|---|---|---|
-| granite4:3b | old (discovery) | 0/33 — **void**, ran under the truncation bug |
-| qwen2.5:7b-instruct | old (discovery) | 0/33 — **void**, same bug |
-| Foundation-Sec-8B-Reasoning | **new** (selection) | 0/33 after 20 min, `discarded=1` |
-| **qwen2.5:7b-instruct** | **new** (selection) | **NOT YET RUN — do this next** |
+Day 2 enumerated 1,704 edges. All 18 in-scope true edges **were found by the tools**, but only **6 ranked inside the top 300**. Ranks: 7, 8, 52, 54, 82, 165, then 351, 398, 400, 401, 404, 408, 441, 578, 680, 681, 1391, 1409.
 
-**Foundation-Sec-8B-Reasoning's failure is deployability, not capability.** Proven directly: on a 20-edge prompt it returns a correct, well-argued selection (`SPAWNED:650:828` — "cmd.exe spawning powershell.exe indicates command-line interpreter abuse"). But 6,204 chars of `thinking` come first and the answer is then cut by the token budget (`done_reason=length`). At 300 edges `content` never starts at all — nothing to parse, nothing to salvage. Twenty minutes and swap-thrashing for what the frontier arm did in under a minute.
+**Day 2's real ceiling at `--top-n 300` was 33.3%, not 100%.** Both arms were scored against an unreachable denominator. Raising the window to 1500 moved frontier 16.7% → 55.6% **with zero model or code change**.
 
-**Next step is cheap and unblocked: run qwen2.5:7b-instruct (non-reasoning) on the inverted pipeline.** It has never been tested against the working design. If it scores, the conclusion is "local models work; reasoning variants are the wrong choice" — clean and defensible.
+Better ranking is a bigger lever than a better model. `src/ares/prioritise.py` is the file that matters most now.
 
-### Bugs found and fixed this session (each one only surfaced by running)
+### Cost of a wide window: shortlist quality degrades
 
-1. **Truncated JSON discarded whole chunks** (`fcf025b`) — models proposed correctly, the parser binned the entire batch when the array was cut mid-entry. This invalidated both earlier local results. Fixed by capping rationale length and salvaging completed entries.
-2. **Claude's fix for #1 broke the Ollama envelope parser** — `_decode_model_json` serves two callers; the heuristic added for one rejected the other. Killed a run instantly.
-3. **`num_ctx` hardcoded at 8192** — a 300-edge prompt is ~23k tokens, so Ollama returned HTTP 400. Now sized from the prompt, capped at 65536.
-4. **Commit-at-end lost whole runs** (`8360cd3`) — an interrupted 30-min run left only a journal file. Now commits per chunk with progress output.
-5. **Swap exhaustion** — three models stacked in Ollama left 78 MB free and stalled runs at 0% CPU. Docker and browsers quit (with Nithin's approval); models unloaded between runs.
-6. **Claude's own scoring rule produced a false integrity alarm** — precision read 94.3%, which by this project's standard means a real defect. It was not: both flagged badges have matching `ProcessGuid`s on the same host. The rule counted "both endpoints in the key but no key edge between them" as false; that is wrong once all 794 real edges are enumerated, because **the key enumerates the attack narrative, not every true relation**. Absence from the key is not evidence of falsehood. Now reported but not counted false; precision back to 100%.
+Frontier day 1 (300 shown): 27 picks, 22 correct, 81% hit rate.
+Frontier day 2 (1500 shown): 29 picks, 10 correct, 34% hit rate.
+Local day 1 (batch 25): 50 picks, 17 correct, 34% hit rate.
+Local day 2 (1500 shown): ~24 picks per 25 shown — selecting nearly everything, no discrimination at scale.
 
-### Hayabusa — cannot be used, and this is settled
+Raising `--top-n` buys recall and spends analyst attention. Both arms show it. Not a model weakness — a harness property, and the honest counterweight to "just raise top-n".
 
-Hayabusa reads **EVTX**; OTRF ships this corpus as **JSON only** — confirmed against the pinned commit (day1 holds the JSON zip, `pcaps/`, `zeek/`, no EVTX). Phase 0's Done criterion was met using a separate sample EVTX. `src/ares/prioritise.py` implements the prioritisation Hayabusa was meant to provide, over JSON, and says so in its docstring. It orders what the model sees and **can never affect a badge or remove an edge from the verified set**.
+### Code changed today
 
-### State of the tree
+- `src/ares/pipeline.py` — `batch_size` param on `run_incident`; splits the shown edges into N calls. **Default `None` keeps the single-shot path byte-for-byte**, so the frontier 66.7% stays reproducible without a re-run.
+- `scripts/run_incident.py` — `--batch-size` flag.
+- 52 tests pass. NOT yet committed.
 
-- MASTER_PLAN at **revision 8** (`b7b5f58`) — two predicates, two arms, both pre-registered before day 2.
-- `docs/PAPER.md` drafted (`2ac43bd`). **§6.2 is now stale** — it reports granite's 0/33 as a model result, but that run is void (bug 1) and the inversion has since changed the finding entirely. Rewrite before sharing.
-- 52 tests pass. Badge firewall unchanged and still holds: 8 bypasses blocked, 1 post-badge mutation leak found and fixed.
-- Databases: `data/ares-day1-frontier.db` (the 66.7% run), `ares-day1-secmodel.db`, `ares-day1-qwen.db`, `ares-day1-local.db`.
+### Honest gaps — do not paper over these
+
+1. **No day 2 local score.** The local arm is proven on ONE incident. The full-window day 2 local run was killed at batch 43/60 (~4h45m elapsed, ~6.5 min/batch — Claude's 90-min estimate was 3× wrong).
+2. **Batch 25 was chosen on day 1 and scored on day 1.** Circular. The day 2 run was the decircularising check and it is the one we lost.
+3. **Day 2 is no longer held out.** Spent on the first (window-capped) run, and its true-edge ranks have now been inspected directly. Any future day 2 number is tuned, not held out. Say so in the paper.
+4. **`docs/PAPER.md` §6 is STALE** — still reports the void granite run as a model result. Must be rewritten with the numbers in this block.
+
+### Databases (data/)
+
+`ares-day1-frontier.db` · `ares-day1-qwen-batch.db` (51.5%) · `ares-day1-qwen-b75.db` · `ares-day1-qwen-b100.db` · `ares-day2-frontier-full.db` (55.6%) · `ares-day2-qwen-full.db` (incomplete). Older void runs kept deliberately: `ares-day1-local.db`, `ares-day1-qwen.db`, `ares-day1-secmodel.db`.
 
 ### Order of work from here
 
-1. qwen2.5:7b-instruct on the inverted pipeline (day 1) — cheap, unblocked
-2. If a local model clears a sane bar → **day 2, both arms, scored once**
-3. Dashboard + MD/HTML/Excel export (Phase 2, hard-gated behind a scored Phase 1)
-4. Rewrite `PAPER.md` §6 with the real numbers; deck when the template arrives
+1. **Commit the batching change** (uncommitted).
+2. **Rewrite `docs/PAPER.md` §6** with the table above — the stale §6.2 is the biggest correctness risk in the deliverables.
+3. **Improve `prioritise.py`** — the single highest-leverage change available. Day 2 proves it.
+4. **Day 2 local, if time allows** — needs either a faster path or an overnight window. ~5–6h at batch 25 on this hardware.
+5. Dashboard + MD/HTML/Excel export (Phase 2).
+
+### Teaching workspace (new, `docs/teaching/`)
+
+Built at Nithin's request: `MISSION.md` (inferred from context, **needs his confirmation**), `reference/0001-metrics-glossary.html` (funnel diagram + all five metrics — useful for the paper), `lessons/0001-reading-the-scoreboard.html`, `assets/lesson.css`, `NOTES.md`, one learning record. Placed under `docs/` deliberately so it does not collide with `MASTER_PLAN.md` / `resume.md` at the root.
 
 ---
 

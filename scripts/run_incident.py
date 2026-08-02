@@ -37,6 +37,12 @@ def main():
         default=300,
         help="how many prioritised verified edges to show the model (default: 300)",
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        help="split the shown edges into batches of this size, one model call each "
+             "(default: one call for all of them)",
+    )
     args = parser.parse_args()
 
     args.db.parent.mkdir(parents=True, exist_ok=True)
@@ -52,6 +58,7 @@ def main():
             limit_chunks=args.limit_chunks,
             model=args.model,
             top_n=args.top_n,
+            batch_size=args.batch_size,
         )
         metrics = score_run(
             connection,

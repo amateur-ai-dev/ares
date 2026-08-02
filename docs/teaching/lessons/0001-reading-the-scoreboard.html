@@ -1,0 +1,182 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0001 — Reading the ARES scoreboard</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+
+<span class="tag">Lesson 0001 · ~8 minutes</span>
+<h1>Reading the scoreboard</h1>
+<p class="subtitle">One win: read a raw ARES run block cold and say, in order, what happened — and which number is the headline.</p>
+
+<p>Here is a real block your tool printed today. Day 1, local arm,
+qwen2.5-7b, batched 25.</p>
+
+<pre>Run counts: edges-enumerated=794, edges-verified=794, verified-edges-shown=300,
+            selections=50, refuted=0, aporias=0, discarded-as-malformed=7
+Selection recall:        51.5% (17/33)
+Verification precision: 100.0% (33/33)
+Verified-edge recall:    51.5% (17/33)</pre>
+
+<p>Most people read that top to bottom and land on <strong>100%</strong>. That is
+the wrong number to be impressed by, and knowing why is the whole lesson.</p>
+
+<h2>1. The two jobs</h2>
+
+<p>ARES splits work between two very different workers.</p>
+
+<div class="table-scroll">
+<table>
+<tr><th>Worker</th><th>Job</th><th>Can it be wrong?</th></tr>
+<tr><td>Tools</td><td>Find every candidate relation; prove or refuse each one</td><td>Only via a bug</td></tr>
+<tr><td>Model</td><td>Decide which proven relations are <em>the attack</em></td><td>Constantly. That is the job</td></tr>
+</table>
+</div>
+
+<p>The tools answer <em>"did A spawn B?"</em> — a GUID match, deterministic, the
+same answer every run forever. The model answers <em>"does that matter?"</em> —
+judgement, no ground truth in the log itself.</p>
+
+<div class="keystone">
+<strong>Keystone.</strong> Verification precision measures the <em>tools</em>.
+Recall measures the <em>model</em>. They have different subjects, so they are not
+trading off against each other. Reading them as a single "accuracy" is the
+mistake to never make in front of a judge.
+</div>
+
+<h2>2. Why 100% is unimpressive</h2>
+
+<p><code>SPAWNED</code> is: does event B's <code>ParentProcessGuid</code> equal
+event A's <code>ProcessGuid</code>, on the same host? That is string equality.
+It cannot be 97% right on well-formed logs. It is right, or the code is broken.</p>
+
+<p>So 100% is a <strong>floor you must clear, not a peak you reached</strong>.
+The honest sentence is: <em>"precision is 100% because verification is
+deterministic — that is expected, and a dip would mean a defect. The real
+precision test is the fixture suite, which found 8 false-VERIFIED paths a clean
+run never hits."</em></p>
+
+<p>That answer is stronger than claiming 100% accuracy, because it shows you know
+what your own number is worth.</p>
+
+<h2>3. Why 51.5% is the result</h2>
+
+<p>33 is the denominator: day 1's key has 36 true edges, 3 need predicates cut
+from the build, so 33 were findable. The model found 17.</p>
+
+<p>Against a measured ceiling of <strong>78%</strong> — the best any selector
+could do given what Sysmon actually records — and a target band of
+<strong>50–60%</strong> set before any run. So 51.5% clears the bar, at its floor.
+That is the number that took work.</p>
+
+<h2>4. The trap in the two recalls</h2>
+
+<p>Selection recall and verified-edge recall are both 51.5%. Not a typo, and not
+redundancy — it is a live integrity check.</p>
+
+<ul>
+<li><strong>Selection recall</strong> — true edges the model <em>picked</em>.</li>
+<li><strong>Verified-edge recall</strong> — true edges the model picked <em>and</em> the tools had verified.</li>
+</ul>
+
+<p>The second can never exceed the first. When they are equal, verification
+dropped nothing the model got right. <strong>If they ever diverge, that is a tool
+bug, not a model result</strong> — and you would chase it in the verifier, not
+the prompt.</p>
+
+<h2>5. The two counts that are not scores</h2>
+
+<p><code>selections=50</code> and <code>discarded-as-malformed=7</code> are
+diagnostics, and they are where the local-vs-frontier story really lives.</p>
+
+<div class="table-scroll">
+<table>
+<tr><th>Day 1</th><th class="num">Recall</th><th class="num">Selections</th><th class="num">Hit rate</th></tr>
+<tr><td>Frontier, single-shot</td><td class="num">66.7%</td><td class="num">27</td><td class="num">81%</td></tr>
+<tr><td>Local, batched 25</td><td class="num">51.5%</td><td class="num">50</td><td class="num">34%</td></tr>
+</table>
+</div>
+
+<p>Local is not just missing more — it is <em>guessing far more</em>. Nearly
+twice the shortlist for two-thirds the coverage. Recall alone hides that; the
+analyst feels it immediately.</p>
+
+<p>And <code>discarded-as-malformed=7</code> across 12 batches means seven model
+replies were unusable as data. That is a <strong>deployability</strong> number,
+not an intelligence one — real work the model did that never counted.</p>
+
+<hr>
+
+<h2>Check yourself</h2>
+<p class="aside">Answer from memory before scrolling back. Retrieval is what makes it stick — recognising the answer in the text above does not.</p>
+
+<div class="quiz">
+
+<div class="q" data-right="1">
+  <p>1. Verification precision drops to 96%. What does that most likely mean?</p>
+  <button class="opt">The model picked several edges that were not really attacks</button>
+  <button class="opt">A defect exists in the deterministic verification code path</button>
+  <button class="opt">The ground truth key is missing some genuinely true edges</button>
+  <button class="opt">The batch size is too large for the local model to handle</button>
+  <div class="why">Precision measures the tools, and the tools are deterministic joins. They do not degrade gracefully — they are correct or broken. A dip is a defect to hunt, never an off day.</div>
+</div>
+
+<div class="q" data-right="2">
+  <p>2. Selection recall is 51.5% but verified-edge recall is 42.4%. Where do you look first?</p>
+  <button class="opt">The prompt, because the model is clearly selecting poorly</button>
+  <button class="opt">The key, because it must list edges that are not real</button>
+  <button class="opt">The verifier, because it dropped edges the model got right</button>
+  <button class="opt">The ceiling, because 78% was probably measured incorrectly</button>
+  <div class="why">Verified-edge recall can never exceed selection recall. A gap means edges the model correctly picked were not verified — the tools lost them. That is a verifier bug.</div>
+</div>
+
+<div class="q" data-right="0">
+  <p>3. A judge asks: "so your verification is 100% accurate?" Best answer?</p>
+  <button class="opt">Yes, and that is expected — the joins are deterministic, so it is a floor</button>
+  <button class="opt">Yes, our verification layer outperformed every baseline that we tested</button>
+  <button class="opt">No, the figure is unreliable because the key is narrative not exhaustive</button>
+  <button class="opt">No, precision cannot be measured until both days have been fully scored</button>
+  <div class="why">Claiming it as an achievement oversells; disowning it undersells. Naming it as an expected floor — with the fixture suite as the real test — is both honest and stronger.</div>
+</div>
+
+<div class="q" data-right="3">
+  <p>4. Day 2's denominator is 18, not 33. Why?</p>
+  <button class="opt">Day 2 is a shorter capture, so it simply contains far fewer events</button>
+  <button class="opt">Day 2 edges were harder, so several of them were excluded as unfair</button>
+  <button class="opt">Day 2 was held out, so most of its edges stay hidden from the scorer</button>
+  <button class="opt">Day 2 has 23 true edges but 5 need predicates cut from the build</button>
+  <div class="why">In-scope means findable with the predicates that exist. Cut predicates are excluded from the denominator rather than counted as misses — you cannot fail to find what you never looked for.</div>
+</div>
+
+</div>
+
+<h2>Read next</h2>
+<p><strong>Primary source:</strong> the scorer itself —
+<code>src/ares/scoring.py</code>, function <code>score_claims</code>. It is 150
+lines and its comments record exactly why unlisted badges are <em>not</em>
+counted false. Reading the code that produced a number is a better citation than
+anything I can write about it.</p>
+
+<p>Reference sheet: <a href="../reference/0001-metrics-glossary.html">ARES metrics glossary</a> — keep this one open during the paper write-up.</p>
+
+<div class="ask">
+<strong>Ask me anything about this.</strong> I am your teacher here — if any of
+the five figures still feels slippery, or you want me to invent a run block and
+have you read it back to me, say so. The next lesson can be drilling on
+worked examples rather than new theory.
+</div>
+
+<script>
+document.querySelectorAll('.q').forEach(function (q) {
+  var right = +q.dataset.right;
+  var opts = q.querySelectorAll('.opt');
+  opts.forEach(function (opt, i) {
+    opt.addEventListener('click', function () {
+      opts.forEach(function (o, j) {
+        o.disabled = true;
+        if (j === right) o.classList.add('right');
+      });
+      if (i !== right) opt.classList.add('wrong');
+      q.querySelector('.why').classList.add('show');
+    });
+  });
+});
+</script>

@@ -341,6 +341,7 @@ def run_incident(
     select_batch=None,
     model=None,
     top_n=300,
+    batch_size=None,
 ):
     """Enumerate/verify facts, then ask one model batch to select attack edges."""
     del key_path
@@ -374,13 +375,36 @@ def run_incident(
         return counts
     shown = prioritise_edges(verified, all_events)[:top_n]
     allowed_edge_ids = {item.edge.edge_id for item in shown}
-    prompt = render_prompt([render_verified_edge(item.edge) for item in shown])
-    if select_batch is None:
-        response = select_with_counts(arm, prompt, allowed_edge_ids, seed, model)
-        selections = response.selections
-        discarded = response.discarded_as_malformed
-    else:
-        selections, discarded = select_batch(arm, prompt, allowed_edge_ids, seed)
+    # One call per batch. A 7B asked to select from 300 edges at once returns a
+    # well-formed EMPTY list - it abstains rather than fails - and the same model
+    # selects confidently from 25. Splitting is a deployment difference, not a
+    # change to what is asked: the edge set, the prompt text and the verifier are
+    # identical. Default None keeps the single-shot path byte-for-byte for the
+    # frontier arm so the two arms stay comparable.
+    groups = (
+        [shown]
+        if batch_size is None
+        else [shown[index:index + batch_size] for index in range(0, len(shown), batch_size)]
+    )
+    selections = []
+    discarded = 0
+    for number, group in enumerate(groups, start=1):
+        group_ids = {item.edge.edge_id for item in group}
+        prompt = render_prompt([render_verified_edge(item.edge) for item in group])
+        if select_batch is None:
+            response = select_with_counts(arm, prompt, group_ids, seed, model)
+            selections.extend(response.selections)
+            discarded += response.discarded_as_malformed
+        else:
+            batch_selections, batch_discarded = select_batch(arm, prompt, group_ids, seed)
+            selections.extend(batch_selections)
+            discarded += batch_discarded
+        if len(groups) > 1:
+            print(
+                f"  selection batch {number}/{len(groups)}: "
+                f"{len(group)} edges, {len(selections)} selected so far",
+                flush=True,
+            )
     accepted_selections = []
     for selection in selections:
         if selection.edge_id not in allowed_edge_ids:

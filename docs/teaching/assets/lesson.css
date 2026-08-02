@@ -1,0 +1,145 @@
+/* Shared stylesheet for every ARES lesson and reference sheet.
+   Linked, never inlined - the whole course should look like one course. */
+
+:root {
+  --ink: #1a1a18;
+  --ink-soft: #55534d;
+  --rule: #d9d5cb;
+  --paper: #fdfcf8;
+  --accent: #7a2e1e;
+  --good: #1f6b3a;
+  --bad: #9b2226;
+  --wash: #f2efe6;
+  --measure: 34rem;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0 auto;
+  padding: 4rem 1.5rem 6rem;
+  max-width: 46rem;
+  background: var(--paper);
+  color: var(--ink);
+  font: 1.0625rem/1.65 Palatino, "Palatino Linotype", Georgia, serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+h1, h2, h3 { line-height: 1.15; font-weight: 600; }
+h1 { font-size: 2.1rem; margin: 0 0 .4rem; letter-spacing: -.015em; }
+h2 { font-size: 1.3rem; margin: 3rem 0 .9rem; }
+h3 { font-size: 1.05rem; margin: 2rem 0 .5rem; }
+
+.subtitle { color: var(--ink-soft); font-style: italic; margin: 0 0 2.5rem; }
+p, li { max-width: var(--measure); }
+li { margin-bottom: .35rem; }
+
+hr { border: 0; border-top: 1px solid var(--rule); margin: 3rem 0; }
+
+code, .mono {
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: .85em;
+}
+
+pre {
+  background: var(--wash);
+  border-left: 3px solid var(--rule);
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  font-size: .8rem;
+  line-height: 1.5;
+}
+
+table { border-collapse: collapse; width: 100%; margin: 1.2rem 0; font-size: .95rem; }
+th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--rule); }
+th { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); font-weight: 600; }
+td.num, th.num { text-align: right; font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: .85rem; }
+.table-scroll { overflow-x: auto; }
+
+/* The single idea a lesson exists to deliver. */
+.keystone {
+  border: 1px solid var(--accent);
+  border-left-width: 4px;
+  padding: 1.1rem 1.3rem;
+  margin: 2rem 0;
+  background: #fff;
+}
+.keystone strong { color: var(--accent); }
+
+.aside {
+  border-left: 3px solid var(--rule);
+  padding-left: 1.1rem;
+  color: var(--ink-soft);
+  font-size: .95rem;
+  margin: 1.5rem 0;
+}
+
+.tag {
+  display: inline-block;
+  font: 600 .68rem/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: .3rem .5rem;
+  border-radius: 2px;
+  background: var(--wash);
+  color: var(--ink-soft);
+}
+
+/* Quiz: retrieval practice. Feedback is immediate and automatic. */
+.quiz { margin: 1.6rem 0 2.4rem; }
+.q { margin-bottom: 1.8rem; }
+.q > p { font-weight: 600; margin-bottom: .7rem; }
+.opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: .95rem;
+  background: #fff;
+  border: 1px solid var(--rule);
+  padding: .6rem .8rem;
+  margin-bottom: .4rem;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.opt:hover:not(:disabled) { border-color: var(--ink-soft); }
+.opt:disabled { cursor: default; opacity: .95; }
+.opt.right { border-color: var(--good); background: #eef6f0; }
+.opt.wrong { border-color: var(--bad);  background: #fbeeee; }
+.why {
+  display: none;
+  margin-top: .5rem;
+  padding-left: .8rem;
+  border-left: 2px solid var(--rule);
+  font-size: .92rem;
+  color: var(--ink-soft);
+}
+.why.show { display: block; }
+
+.nav { margin-top: 3rem; font-size: .95rem; }
+.nav a { color: var(--accent); }
+a { color: var(--accent); }
+
+.ask {
+  margin-top: 3rem;
+  padding: 1rem 1.2rem;
+  background: var(--wash);
+  font-size: .95rem;
+}
+
+@media print {
+  body { padding: 0; max-width: none; font-size: 10.5pt; }
+  .quiz, .ask, .nav { display: none; }
+  .keystone { border-color: #000; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e8e5dd; --ink-soft: #a09c92; --rule: #3a3833;
+    --paper: #161512; --wash: #21201b; --accent: #d98b6a;
+    --good: #6fc48d; --bad: #e08a8a;
+  }
+  .opt, .keystone { background: #1d1c18; }
+  .opt.right { background: #17281d; }
+  .opt.wrong { background: #2a1a1a; }
+}

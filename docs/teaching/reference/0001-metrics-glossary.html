@@ -1,0 +1,110 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARES Metrics — Reference</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+
+<span class="tag">Reference · 0001</span>
+<h1>The ARES scoreboard</h1>
+<p class="subtitle">Five figures, what each one measures, and what it cannot tell you.</p>
+
+<h2>The funnel</h2>
+<p>Every figure is a count taken at one point in a narrowing pipeline. Knowing
+where a number sits in the funnel tells you what it can possibly mean.</p>
+
+<pre>196,081 raw log events          the whole day
+        ↓  tools, deterministic
+    794 candidate edges          enumerate-candidate-edges
+        ↓  tools, deterministic
+    794 verified edges           verify - each one badged or refused
+        ↓  tools, ranking only
+    300 edges shown              prioritise, top-N
+        ↓  MODEL, interpretive
+     50 selections               "these are the attack"
+        ↓  scoring, against key
+     17 correct   of 33 true     the result</pre>
+
+<p><strong>The cut between line 4 and line 5 is the whole thesis.</strong>
+Everything above it is deterministic and reproducible. Everything below it is a
+model's opinion. The metrics are designed so you can always tell which side of
+that line a failure came from.</p>
+
+<h2>The five figures</h2>
+
+<div class="table-scroll">
+<table>
+<tr><th>Figure</th><th>Question it answers</th><th>Subject</th></tr>
+<tr><td><strong>Selection recall</strong></td><td>Of the true attack edges, how many did the model pick?</td><td>the model</td></tr>
+<tr><td><strong>Verification precision</strong></td><td>Of the edges we badged VERIFIED, how many were correct?</td><td>the tools</td></tr>
+<tr><td><strong>Verified-edge recall</strong></td><td>How many true edges were both verified <em>and</em> picked?</td><td>end to end</td></tr>
+<tr><td><strong>Selections made</strong></td><td>How much did the model hand the analyst in total?</td><td>workload</td></tr>
+<tr><td><strong>Malformed discarded</strong></td><td>How many replies were unusable as data?</td><td>deployability</td></tr>
+</table>
+</div>
+
+<h3>Selection recall</h3>
+<p><code>selected ∩ true / true</code>. Denominator is the <em>in-scope</em> true
+edges from the frozen key — day 1 has 36 true edges but 3 need predicates that
+were cut from the build, so the denominator is <strong>33</strong>, not 36.
+Cut predicates are excluded rather than counted as misses, because failing to
+find something you never looked for is not a model failure.</p>
+
+<h3>Verification precision</h3>
+<p><code>correct badges / all badges</code>. <strong>Expected to be 100%.</strong>
+<code>SPAWNED</code> and <code>PROCESS_OPENED_CONNECTION</code> are deterministic
+joins on GUIDs, so on well-formed logs they are correct by construction. This is
+a <em>floor, not an achievement</em> — any dip is a defect, not a bad day. The
+real test of precision is the confounded-negative fixture suite, which found 8
+false-VERIFIED paths that no clean incident run ever touches.</p>
+
+<div class="aside">
+Absence from the key is <strong>not</strong> evidence of falsehood. The key
+enumerates the attack narrative, not every true relation in the log. An earlier
+version of the scorer counted unlisted badges as wrong and reported 94.3%
+precision — a false alarm; both flagged badges were correct. Only the key's
+hand-listed <em>negative confounder pairs</em> can falsify a badge.
+</div>
+
+<h3>Verified-edge recall</h3>
+<p><code>(verified ∧ selected) ∩ true / true</code>. The end-to-end number, and
+the one to quote. It equals selection recall whenever verification is perfect —
+which so far it always has been. <strong>If these two ever diverge, verification
+dropped an edge the model correctly picked</strong>, and that is a tool bug, not
+a model result. Watching the gap is a free integrity check.</p>
+
+<h3>Selections made</h3>
+<p>Raw count, not a score. Meaningful as a <em>hit rate</em> against the correct
+ones: 50 selections for 17 correct is 34%; 27 for 22 is 81%. Same recall class,
+very different analyst experience — a shortlist twice as long for the same
+coverage is a real cost.</p>
+
+<h3>Malformed discarded</h3>
+<p>Replies that failed schema or parse and were thrown away. Measures
+<em>deployability, not intelligence</em>. A model can be perfectly capable and
+still score zero here by never emitting parseable JSON — which is exactly how
+Foundation-Sec-8B failed: correct reasoning, 6,204 characters of it, cut off
+before the answer. Non-zero means some of the model's real work never counted.</p>
+
+<h2>Numbers to know cold</h2>
+<div class="table-scroll">
+<table>
+<tr><th>Quantity</th><th class="num">Value</th><th>Note</th></tr>
+<tr><td>Day 1 in-scope true edges</td><td class="num">33</td><td>of 36; 3 cut predicates</td></tr>
+<tr><td>Day 2 in-scope true edges</td><td class="num">18</td><td>of 23; 5 cut predicates</td></tr>
+<tr><td>Verified-edge recall ceiling</td><td class="num">78%</td><td>measured Sysmon ceiling</td></tr>
+<tr><td>Target band</td><td class="num">50–60%</td><td>set before any run</td></tr>
+<tr><td>Day 1 frontier, single-shot</td><td class="num">66.7%</td><td>22/33, 27 selections</td></tr>
+<tr><td>Day 1 local, batched 25</td><td class="num">51.5%</td><td>17/33, 50 selections</td></tr>
+</table>
+</div>
+
+<h2>Glossary</h2>
+<ul>
+<li><strong>Edge</strong> — a claimed relation between two log events.</li>
+<li><strong>Predicate</strong> — the relation type. Two built: <code>SPAWNED</code>, <code>PROCESS_OPENED_CONNECTION</code>. Two cut: <code>WROTE_PATH_BEFORE_EXECUTION</code>, <code>SAME_SESSION</code>.</li>
+<li><strong>Badge</strong> — verified / refuted / unverifiable. A VERIFIED badge requires a matching immutable <code>verifier_executions</code> row.</li>
+<li><strong>Aporia</strong> — the honest "cannot be determined from this evidence" outcome.</li>
+<li><strong>The key</strong> — frozen YAML ground truth. Narrative, not exhaustive.</li>
+<li><strong>Ceiling</strong> — the best recall physically reachable given what Sysmon records.</li>
+</ul>
+
+<div class="nav">← <a href="../lessons/0001-reading-the-scoreboard.html">Lesson 0001 · Reading the scoreboard</a></div>
