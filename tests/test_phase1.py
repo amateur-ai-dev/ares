@@ -15,6 +15,7 @@ from ares.predicates import (
     spawned,
 )
 from ares import store
+from ares.proposer import parse_proposals
 from ares.scoring import score_claims
 from ares.store import (
     assign_verified_badge,
@@ -285,3 +286,32 @@ class BadgedClaimImmutabilityTests(unittest.TestCase):
         self.connection.execute("UPDATE claims SET claim_text = 'revised' WHERE id = 100")
         text = self.connection.execute("SELECT claim_text FROM claims WHERE id = 100").fetchone()[0]
         self.assertEqual(text, "revised")
+
+
+class TruncatedResponseSalvageTests(unittest.TestCase):
+    """A cut-off response must not cost the proposals it already finished writing."""
+
+    ALLOWED = {"373", "650", "622"}
+
+    def test_completed_entries_survive_a_truncated_array(self):
+        raw = (
+            '{"edges": [\n'
+            '{"source_event_id":"373","target_event_id":"650","relation_type":"SPAWNED","rationale":"guid match"},\n'
+            '{"source_event_id":"622","target_event_id":"650","relation_type":"SPAWNED","rationale":"second"},\n'
+            '{"source_event_id":"999","target_event_id":"'
+        )
+        proposals, discarded = parse_proposals(raw, self.ALLOWED)
+        self.assertEqual([(p.source_event_id, p.target_event_id) for p in proposals],
+                         [("373", "650"), ("622", "650")])
+        self.assertEqual(discarded, 0)
+
+    def test_salvage_still_rejects_hallucinated_event_ids(self):
+        raw = '{"edges":[{"source_event_id":"11111","target_event_id":"650","relation_type":"SPAWNED","rationale":"x"}'
+        proposals, discarded = parse_proposals(raw, self.ALLOWED)
+        self.assertEqual(proposals, [])
+        self.assertEqual(discarded, 1)
+
+    def test_unparseable_text_is_still_discarded(self):
+        proposals, discarded = parse_proposals("the model declined", self.ALLOWED)
+        self.assertEqual(proposals, [])
+        self.assertEqual(discarded, 1)

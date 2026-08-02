@@ -75,6 +75,32 @@ def _strip_markdown_fences(value):
     return stripped
 
 
+def _salvage_objects(value):
+    """Recover whole objects from a JSON array the model ran out of budget to close.
+
+    A truncated response cost us every proposal in the chunk, including the ones
+    the model had already finished writing. The entries before the cut are intact
+    and there is no reason to discard them with the fragment.
+    """
+    decoder = json.JSONDecoder()
+    recovered = []
+    index = 0
+    while True:
+        start = value.find("{", index)
+        if start == -1:
+            return recovered
+        try:
+            decoded, end = decoder.raw_decode(value[start:])
+        except json.JSONDecodeError:
+            # Usually the outer wrapper, which never closed. Step over it and
+            # keep looking for the complete entries nested inside.
+            index = start + 1
+            continue
+        if isinstance(decoded, dict):
+            recovered.append(decoded)
+        index = start + end
+
+
 def _decode_model_json(raw_text):
     value = _escape_control_characters(_strip_markdown_fences(raw_text))
     decoder = json.JSONDecoder()
@@ -85,8 +111,14 @@ def _decode_model_json(raw_text):
             decoded, _ = decoder.raw_decode(value[index:])
         except json.JSONDecodeError:
             continue
+        # A lone proposal object means the wrapper was truncated and we happened
+        # to land inside it. Falling through to salvage recovers the whole run of
+        # completed entries instead of just this one.
+        if isinstance(decoded, dict) and not ({"edges", "proposals"} & set(decoded)):
+            break
         return decoded
-    return None
+    salvaged = _salvage_objects(value)
+    return {"edges": salvaged} if salvaged else None
 
 
 def _valid_event_id(value):
@@ -143,7 +175,9 @@ PROPOSAL_SCHEMA = {
                     "source_event_id": {"type": "string"},
                     "target_event_id": {"type": "string"},
                     "relation_type": {"type": "string", "enum": [SPAWNED, PROCESS_OPENED_CONNECTION]},
-                    "rationale": {"type": "string"},
+                    # Capped: unbounded rationales are what exhausted the token
+                    # budget and truncated the JSON mid-array.
+                    "rationale": {"type": "string", "maxLength": 120},
                 },
                 "required": ["source_event_id", "target_event_id", "relation_type", "rationale"],
             },
@@ -161,7 +195,7 @@ def _ollama_response(prompt, seed, model=None):
         "format": PROPOSAL_SCHEMA,
         # Without a cap a rambling model runs to the context limit; with one and
         # no schema it is cut off mid-preamble. Both are needed together.
-        "options": {"num_ctx": 16384, "temperature": 0, "seed": seed, "num_predict": 2000},
+        "options": {"num_ctx": 16384, "temperature": 0, "seed": seed, "num_predict": 6000},
     }).encode("utf-8")
     request = urllib.request.Request(
         OLLAMA_URL,

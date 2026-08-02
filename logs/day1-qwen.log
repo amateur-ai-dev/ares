@@ -1,0 +1,39 @@
+  chunk 1: 0 proposals, 0 badged, 0 aporias
+  chunk 2: 0 proposals, 0 badged, 0 aporias
+  chunk 3: 0 proposals, 0 badged, 0 aporias
+  chunk 4: 17 proposals, 0 badged, 16 aporias
+  chunk 5: 23 proposals, 0 badged, 22 aporias
+  chunk 6: 23 proposals, 0 badged, 22 aporias
+  chunk 7: 35 proposals, 3 badged, 28 aporias
+  chunk 8: 35 proposals, 3 badged, 28 aporias
+  chunk 9: 37 proposals, 3 badged, 30 aporias
+  chunk 10: 37 proposals, 3 badged, 30 aporias
+  chunk 11: 37 proposals, 3 badged, 30 aporias
+  chunk 12: 44 proposals, 3 badged, 37 aporias
+  chunk 13: 59 proposals, 3 badged, 52 aporias
+  chunk 14: 59 proposals, 3 badged, 52 aporias
+  chunk 15: 59 proposals, 3 badged, 52 aporias
+  chunk 16: 63 proposals, 3 badged, 56 aporias
+  chunk 17: 66 proposals, 3 badged, 59 aporias
+  chunk 18: 66 proposals, 3 badged, 59 aporias
+  chunk 19: 77 proposals, 4 badged, 66 aporias
+  chunk 20: 77 proposals, 4 badged, 66 aporias
+  chunk 21: 77 proposals, 4 badged, 66 aporias
+  chunk 22: 93 proposals, 6 badged, 76 aporias
+  chunk 23: 93 proposals, 6 badged, 76 aporias
+  chunk 24: 96 proposals, 6 badged, 78 aporias
+  chunk 25: 101 proposals, 8 badged, 78 aporias
+Incident: day1 (local arm, run 5fcd62b4bd1a482197dab6a9cd537100)
+Run counts: proposals=101, badged=8, refuted=15, aporias=78, discarded-as-malformed=15
+Proposal recall: 0.0% (0/33)
+Verification precision: 0.0% (0/0)
+Verified-edge recall: 0.0% (0/33)
+Key edges out of scope (SAME_SESSION/WROTE_PATH_BEFORE_EXECUTION): 3
+Badges the key cannot speak to: 8 (both events absent from the key — real relations, outside the attack narrative)
+  wrong badges caught in-universe: 0, on hand-listed confounder pairs: 0
+
+How to read verification precision: SPAWNED and PROCESS_OPENED_CONNECTION are
+deterministic joins, so on well-formed logs they are correct by construction and
+this figure is expected to sit at 100%. It is a floor, not an achievement — any
+dip means a real defect. The genuine test of precision is the confounded-negative
+fixture suite, which found 8 false-VERIFIED paths a clean incident run never hits.
