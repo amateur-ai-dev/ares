@@ -1,0 +1,14 @@
+Incident: day1 (frontier arm, run 1ae25c6c664d45f48a9dcddff3672b5c)
+Run counts: edges-enumerated=794, edges-verified=794, verified-edges-shown=300, selections=27, refuted=0, aporias=0, discarded-as-malformed=0
+Selection recall: 66.7% (22/33)
+Verification precision: 100.0% (33/33)
+Verified-edge recall: 66.7% (22/33)
+Key edges out of scope (SAME_SESSION/WROTE_PATH_BEFORE_EXECUTION): 3
+Badges the key cannot speak to: 759 (both events absent from the key — real relations, outside the attack narrative)
+  badges between key-mentioned events not listed in the key: 2 (reported, NOT counted false — the key is not an exhaustive list of true relations), on hand-listed confounder pairs: 0
+
+How to read verification precision: SPAWNED and PROCESS_OPENED_CONNECTION are
+deterministic joins, so on well-formed logs they are correct by construction and
+this figure is expected to sit at 100%. It is a floor, not an achievement — any
+dip means a real defect. The genuine test of precision is the confounded-negative
+fixture suite, which found 8 false-VERIFIED paths a clean incident run never hits.

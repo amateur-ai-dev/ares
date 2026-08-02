@@ -1,0 +1,33 @@
+Traceback (most recent call last):
+  File "/Users/nithingowda/ares/scripts/run_incident.py", line 112, in <module>
+    main()
+  File "/Users/nithingowda/ares/scripts/run_incident.py", line 47, in main
+    counts = run_incident(
+             ^^^^^^^^^^^^^
+  File "/Users/nithingowda/ares/src/ares/pipeline.py", line 379, in run_incident
+    response = select_with_counts(arm, prompt, allowed_edge_ids, seed, model)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/nithingowda/ares/src/ares/proposer.py", line 329, in select_with_counts
+    raw_text = _ollama_response(prompt, seed, model, SELECTION_SCHEMA)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/nithingowda/ares/src/ares/proposer.py", line 275, in _ollama_response
+    with urllib.request.urlopen(request, timeout=600) as response:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/nithingowda/.local/share/uv/python/cpython-3.12.12-macos-aarch64-none/lib/python3.12/urllib/request.py", line 215, in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/nithingowda/.local/share/uv/python/cpython-3.12.12-macos-aarch64-none/lib/python3.12/urllib/request.py", line 521, in open
+    response = meth(req, response)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/nithingowda/.local/share/uv/python/cpython-3.12.12-macos-aarch64-none/lib/python3.12/urllib/request.py", line 630, in http_response
+    response = self.parent.error(
+               ^^^^^^^^^^^^^^^^^^
+  File "/Users/nithingowda/.local/share/uv/python/cpython-3.12.12-macos-aarch64-none/lib/python3.12/urllib/request.py", line 559, in error
+    return self._call_chain(*args)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/nithingowda/.local/share/uv/python/cpython-3.12.12-macos-aarch64-none/lib/python3.12/urllib/request.py", line 492, in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+  File "/Users/nithingowda/.local/share/uv/python/cpython-3.12.12-macos-aarch64-none/lib/python3.12/urllib/request.py", line 639, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 400: Bad Request

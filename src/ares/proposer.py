@@ -253,18 +253,41 @@ SELECTION_SCHEMA = {
 }
 
 
+NUM_PREDICT = 2500
+MAX_NUM_CTX = 65536
+
+
+def _context_for(prompt):
+    """Size the context window to the prompt instead of guessing a constant.
+
+    A fixed 8192 was fine for an 80-event chunk and made Ollama reject a 300-edge
+    selection prompt outright with HTTP 400 - roughly 23,000 tokens against an
+    8,192 window. Sizing from the prompt keeps the KV cache small for small
+    prompts, which matters on a 16GB machine, without silently truncating or
+    failing on a large one.
+    """
+    estimated = len(prompt) // 3 + NUM_PREDICT + 512
+    window = 8192
+    while window < estimated and window < MAX_NUM_CTX:
+        window *= 2
+    return min(window, MAX_NUM_CTX)
+
+
 def _ollama_response(prompt, seed, model=None, schema=PROPOSAL_SCHEMA):
     payload = json.dumps({
         "model": model or OLLAMA_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "format": schema,
-        # Without a cap a rambling model runs to the context limit; with one and
-        # no schema it is cut off mid-preamble. Both are needed together.
-        # 8192 fits an 80-event prompt with room to answer and halves the KV cache
-        # against a machine that was swapping. num_predict is modest because
-        # truncation is now salvaged rather than fatal.
-        "options": {"num_ctx": 8192, "temperature": 0, "seed": seed, "num_predict": 2500},
+        # The schema forces the first token to be structure; the cap stops a
+        # rambling model running to the context limit. Both are needed together,
+        # and truncation past the cap is salvaged rather than fatal.
+        "options": {
+            "num_ctx": _context_for(prompt),
+            "temperature": 0,
+            "seed": seed,
+            "num_predict": NUM_PREDICT,
+        },
     }).encode("utf-8")
     request = urllib.request.Request(
         OLLAMA_URL,
