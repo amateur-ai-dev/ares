@@ -295,7 +295,10 @@ def _ollama_response(prompt, seed, model=None, schema=PROPOSAL_SCHEMA):
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=600) as response:
+    # A reasoning-tuned 8B took 10m35s on a 300-edge selection prompt and was cut
+    # off by the old 600s limit. How long a local model needs is a result worth
+    # measuring, not a failure to engineer around.
+    with urllib.request.urlopen(request, timeout=2700) as response:
         body = response.read().decode("utf-8", errors="replace")
     decoded = _decode_model_json(body)
     if not isinstance(decoded, dict):

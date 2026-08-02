@@ -2,11 +2,78 @@
 
 > Living status snapshot. Update on any significant change. Complements `docs/MASTER_PLAN.md` (intent) — this is live state.
 
-**Last updated:** 2026-07-31
+**Last updated:** 2026-08-02
 
 ---
 
-## 🔖 RESUME HERE (2026-07-31 — Phase 0 DONE and COMMITTED; next is Phase 1a, Nithin's own work)
+## 🔖 RESUME HERE (2026-08-02 — harness PROVEN at 66.7% on the frontier arm; local arm unresolved)
+
+**Deadline extended by 24h on 2026-08-02.** Nithin is separately preparing a paper (drafted, `docs/PAPER.md`) and a deck (template not yet supplied).
+
+### The headline result
+
+**Day 1, frontier arm (Codex), inverted pipeline:**
+```
+edges-enumerated=794  edges-verified=794  verified-edges-shown=300  selections=27
+Selection recall:       66.7% (22/33)
+Verification precision: 100.0% (33/33)
+Verified-edge recall:   66.7% (22/33)
+```
+**Above the 50–60% target, against a 78% structural ceiling, with zero false verified.** 27 selections for 22 correct — disciplined, not carpet-bombed. The harness is feasible; the architecture is not the constraint.
+
+**This is day 1 (the dev/practice incident) and it has now been seen. Day 2 remains UNRUN and single-shot.** The 66.7% is a feasibility figure, not the scored result.
+
+### The inversion — the single most important change (commit `3d18191`)
+
+The pipeline had the division of labour backwards, and **the spec Claude wrote for Terra is what put it that way** — it asked the model to *discover* edges by spotting GUID matches across raw events. That is exact string matching: the task an LLM is worst at and code is perfect at. Measured: 794 edges derivable deterministically on day 1; the model found 3.
+
+Now: **tools enumerate and verify every edge; the model selects which verified edges are the attack.** This is what §8 Phase 1 always described. Selections are held in memory and deliberately kept OUT of the claims table, so a model's opinion about relevance never shares space with a proven relation. Effect on day 1: selection recall 0% → 24.2% on a 25-edge smoke, then 66.7% on the full frontier run.
+
+It also collapsed 25 model calls per incident into **one**. Claude's "1.5–2 hours" estimate was stale by two orders of magnitude — it came from the old design and was not recomputed when the design changed.
+
+### Local arm — genuinely unresolved, do not conclude "local models can't do this"
+
+| Model | Design | Result |
+|---|---|---|
+| granite4:3b | old (discovery) | 0/33 — **void**, ran under the truncation bug |
+| qwen2.5:7b-instruct | old (discovery) | 0/33 — **void**, same bug |
+| Foundation-Sec-8B-Reasoning | **new** (selection) | 0/33 after 20 min, `discarded=1` |
+| **qwen2.5:7b-instruct** | **new** (selection) | **NOT YET RUN — do this next** |
+
+**Foundation-Sec-8B-Reasoning's failure is deployability, not capability.** Proven directly: on a 20-edge prompt it returns a correct, well-argued selection (`SPAWNED:650:828` — "cmd.exe spawning powershell.exe indicates command-line interpreter abuse"). But 6,204 chars of `thinking` come first and the answer is then cut by the token budget (`done_reason=length`). At 300 edges `content` never starts at all — nothing to parse, nothing to salvage. Twenty minutes and swap-thrashing for what the frontier arm did in under a minute.
+
+**Next step is cheap and unblocked: run qwen2.5:7b-instruct (non-reasoning) on the inverted pipeline.** It has never been tested against the working design. If it scores, the conclusion is "local models work; reasoning variants are the wrong choice" — clean and defensible.
+
+### Bugs found and fixed this session (each one only surfaced by running)
+
+1. **Truncated JSON discarded whole chunks** (`fcf025b`) — models proposed correctly, the parser binned the entire batch when the array was cut mid-entry. This invalidated both earlier local results. Fixed by capping rationale length and salvaging completed entries.
+2. **Claude's fix for #1 broke the Ollama envelope parser** — `_decode_model_json` serves two callers; the heuristic added for one rejected the other. Killed a run instantly.
+3. **`num_ctx` hardcoded at 8192** — a 300-edge prompt is ~23k tokens, so Ollama returned HTTP 400. Now sized from the prompt, capped at 65536.
+4. **Commit-at-end lost whole runs** (`8360cd3`) — an interrupted 30-min run left only a journal file. Now commits per chunk with progress output.
+5. **Swap exhaustion** — three models stacked in Ollama left 78 MB free and stalled runs at 0% CPU. Docker and browsers quit (with Nithin's approval); models unloaded between runs.
+6. **Claude's own scoring rule produced a false integrity alarm** — precision read 94.3%, which by this project's standard means a real defect. It was not: both flagged badges have matching `ProcessGuid`s on the same host. The rule counted "both endpoints in the key but no key edge between them" as false; that is wrong once all 794 real edges are enumerated, because **the key enumerates the attack narrative, not every true relation**. Absence from the key is not evidence of falsehood. Now reported but not counted false; precision back to 100%.
+
+### Hayabusa — cannot be used, and this is settled
+
+Hayabusa reads **EVTX**; OTRF ships this corpus as **JSON only** — confirmed against the pinned commit (day1 holds the JSON zip, `pcaps/`, `zeek/`, no EVTX). Phase 0's Done criterion was met using a separate sample EVTX. `src/ares/prioritise.py` implements the prioritisation Hayabusa was meant to provide, over JSON, and says so in its docstring. It orders what the model sees and **can never affect a badge or remove an edge from the verified set**.
+
+### State of the tree
+
+- MASTER_PLAN at **revision 8** (`b7b5f58`) — two predicates, two arms, both pre-registered before day 2.
+- `docs/PAPER.md` drafted (`2ac43bd`). **§6.2 is now stale** — it reports granite's 0/33 as a model result, but that run is void (bug 1) and the inversion has since changed the finding entirely. Rewrite before sharing.
+- 52 tests pass. Badge firewall unchanged and still holds: 8 bypasses blocked, 1 post-badge mutation leak found and fixed.
+- Databases: `data/ares-day1-frontier.db` (the 66.7% run), `ares-day1-secmodel.db`, `ares-day1-qwen.db`, `ares-day1-local.db`.
+
+### Order of work from here
+
+1. qwen2.5:7b-instruct on the inverted pipeline (day 1) — cheap, unblocked
+2. If a local model clears a sane bar → **day 2, both arms, scored once**
+3. Dashboard + MD/HTML/Excel export (Phase 2, hard-gated behind a scored Phase 1)
+4. Rewrite `PAPER.md` §6 with the real numbers; deck when the template arrives
+
+---
+
+### Superseded bookmark (2026-07-31 — Phase 0 DONE and COMMITTED; next is Phase 1a)
 
 **Phase 0 is closed.** Marked `✅ DONE 2026-07-29` in `docs/MASTER_PLAN.md` §8 and committed as `a59c7c4` (`feat(phase0): foundations, frozen datasets, first SPAWNED badge`). The plan commit `b009e49` precedes it.
 
