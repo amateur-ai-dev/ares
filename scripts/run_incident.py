@@ -79,15 +79,22 @@ def main():
             batch_size=args.batch_size,
             dataset_mode=mode,
         )
-        metrics = score_run(
-            connection,
-            key_path,
-            run_incident_id,
-            selected_edge_ids=counts.selected_edge_ids,
-            enumerated_edge_count=counts.edges_enumerated,
-            verified_edge_count=counts.edges_verified,
-            verified_edges_shown=counts.verified_edges_shown,
-        )
+        # Demo mode does not score, and this is a refusal rather than an omission.
+        # The demo corpus and its key were both authored here, so any figure it
+        # produced would be this project marking its own homework - and a number
+        # on a screen travels further than the caveat next to it. Withholding it
+        # is the only version of that caveat that cannot be cropped out.
+        metrics = None
+        if counts.dataset_mode != "demo":
+            metrics = score_run(
+                connection,
+                key_path,
+                run_incident_id,
+                selected_edge_ids=counts.selected_edge_ids,
+                enumerated_edge_count=counts.edges_enumerated,
+                verified_edge_count=counts.edges_verified,
+                verified_edges_shown=counts.verified_edges_shown,
+            )
     finally:
         connection.close()
 
@@ -101,14 +108,36 @@ def main():
         f"refuted={counts.refuted}, aporias={counts.aporias}, "
         f"discarded-as-malformed={counts.discarded_as_malformed}"
     )
+    if metrics is None:
+        print(
+            "\n  Demo mode: no accuracy figures are produced here.\n"
+            "  This corpus and its answer key were both authored in this repository,\n"
+            "  so any recall or precision number would be self-graded and meaningless.\n"
+            "  Accuracy is measured only on the APT29 evaluation corpus (--incident day1/day2)."
+        )
+        return
+
     denominator = metrics["observable_true_edge_count"]
     print(
         f"Selection recall: {metrics['selection_recall']:.1%} "
         f"({metrics['selected_true_edge_count']}/{denominator})"
     )
+    # T0-8: this is precision over the edges the key can ADJUDICATE, not over every
+    # badge issued. Printing it as bare "verification precision: 100%" invited the
+    # reading that nothing was ever falsely verified - a claim the key cannot
+    # support, and one a judge could disprove from this very log. The coverage line
+    # is printed with it, always, so the number cannot travel without its scope.
+    adjudicated = metrics["badged_edge_count"]
+    issued = metrics["verified_edge_count"]
     print(
-        f"Verification precision: {metrics['verification_precision']:.1%} "
-        f"({metrics['correct_badged_edge_count']}/{metrics['badged_edge_count']})"
+        f"Precision on adjudicated key edges: "
+        f"{metrics['correct_badged_edge_count']}/{adjudicated}"
+        + (f" ({metrics['verification_precision']:.1%})" if adjudicated else "")
+    )
+    print(
+        f"Adjudication coverage: {adjudicated} of {issued} badges issued"
+        + (f" ({adjudicated / issued:.1%})" if issued else "")
+        + f" — {issued - adjudicated} unadjudicated, the key does not speak to them"
     )
     print(
         f"Verified-edge recall: {metrics['verified_edge_recall']:.1%} "
@@ -126,11 +155,14 @@ def main():
     )
     # Do not let a clean precision figure be read as a hard-won result.
     print(
-        "\nHow to read verification precision: SPAWNED and PROCESS_OPENED_CONNECTION are\n"
+        "\nHow to read these two lines: SPAWNED and PROCESS_OPENED_CONNECTION are\n"
         "deterministic joins, so on well-formed logs they are correct by construction and\n"
-        "this figure is expected to sit at 100%. It is a floor, not an achievement — any\n"
-        "dip means a real defect. The genuine test of precision is the confounded-negative\n"
-        "fixture suite, which found 8 false-VERIFIED paths a clean incident run never hits."
+        "the adjudicated figure is expected to sit at 100%. It is a floor, not an\n"
+        "achievement — any dip means a real defect. It does NOT establish that nothing was\n"
+        "falsely verified: the key adjudicates only the attack narrative, so most badges\n"
+        "are unadjudicated background relations it cannot rule on either way. The genuine\n"
+        "test of precision is the confounded-negative fixture suite, which found 8\n"
+        "false-VERIFIED paths a clean incident run never hits."
     )
 
 

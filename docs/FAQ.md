@@ -50,14 +50,26 @@ Measured on two real published attacks (MITRE's APT29 evaluation logs):
 |---|---|---|
 | Real attack links found | 22 of 33 | 10 of 18 |
 | **Found** | **66.7%** | **55.6%** |
-| **Falsely marked verified** | **0** | **0** |
+| Wrong among the links the key could rule on | 0 of 33 | 0 of 18 |
 
 Both clear the 50–60% target set before any code was written, against a
 structural ceiling of 78% (see below).
 
-Across all twelve runs performed, **verification precision was 100%** — not one
-false VERIFIED badge, under any configuration, including runs where the model
-produced pure noise.
+**A necessary correction to how we first reported this.** The "100%" is precision
+over the badges the answer key *adjudicates* — 33 of them on attack 1. The system
+issued **794** badges in that run; the remaining **761 were never adjudicated**,
+because the key describes the attack, not every ordinary process relationship in
+the log.
+
+Stated correctly:
+
+- **Precision on adjudicated edges: 33/33 (100%)**
+- **Adjudication coverage: 4.2% of badges issued**
+
+We previously wrote "not one false verified badge" without that qualifier. That
+claim went further than the evidence and has been withdrawn. What holds is that
+no badge the key could rule on was wrong, and that the adversarial fixture suite
+— not this number — is what tests the verification logic properly.
 
 ## Why can't it find 100% of the attack?
 
@@ -141,8 +153,14 @@ The threat model is written down in `SECURITY.md` — every surface enumerated,
 each mitigation marked implemented, planned, or deferred with a reason.
 
 Highlights of what it covers: parsing untrusted third-party log files, binding a
-local web server, executing security scanners over user-supplied code, and the
-guarantee that **uploaded code is read and scanned, never executed**.
+local web server, and executing security scanners over user-supplied code.
+
+On that last point, stated carefully: **ARES itself does not execute code you
+give it — it reads and pattern-matches.** But the scanners it invokes are real
+programs parsing hostile input, and a dependency scanner may resolve package
+manifests. "Never executed" is a claim about our code, not a sandbox guarantee
+about the whole toolchain, and `SECURITY.md` draws that line explicitly rather
+than letting the simpler sentence stand.
 
 What it is *not*: a professional security audit or penetration test. That is not
 achievable solo on this timeline, and the document says so rather than implying

@@ -17,7 +17,7 @@ eligibility:
 matching_algorithm:
   - Match identical source, target, relation_type, and Hostname values.
   - Deduplicate identical resolved triples before scoring.
-observable_true_edge_set: "All true_edges below; the orphan connection is deliberately not a true edge because its source process record is absent."
+observable_true_edge_set: "All true_edges below; the two orphan connections are deliberately not true edges because their source process records are absent."
 true_edges:
   - id: DEMO-001
     direction: source_to_target
@@ -40,10 +40,69 @@ true_edges:
     target: {line: 84, event_id: 3, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000083}"}
     acceptable_equivalences: []
     note: "Encoded PowerShell opened a connection to RFC 5737 documentation address 203.0.113.44."
-negative_confounder_pairs: []
+  - id: DEMO-004
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 231, event_id: 1, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000231}"}
+    target: {line: 232, event_id: 1, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000232}"}
+    acceptable_equivalences: []
+    note: "Encoded PowerShell launched a credential-access-looking rundll32 dump command."
+  - id: DEMO-005
+    direction: source_to_target
+    relation_type: PROCESS_OPENED_CONNECTION
+    source: {line: 231, event_id: 1, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000231}"}
+    target: {line: 233, event_id: 3, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000231}"}
+    acceptable_equivalences: []
+    note: "The originating PowerShell connected to the fictional second host using a documentation address."
+  - id: DEMO-006
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 234, event_id: 1, Hostname: DEMO-HARBOR.example.test, ProcessGuid: "{DEMO-HARBOR-0000-0000-0000-000000000234}"}
+    target: {line: 235, event_id: 1, Hostname: DEMO-HARBOR.example.test, ProcessGuid: "{DEMO-HARBOR-0000-0000-0000-000000000235}"}
+    acceptable_equivalences: []
+    note: "The fictional remote service spawned a command shell on the second host."
+  - id: DEMO-007
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 235, event_id: 1, Hostname: DEMO-HARBOR.example.test, ProcessGuid: "{DEMO-HARBOR-0000-0000-0000-000000000235}"}
+    target: {line: 236, event_id: 1, Hostname: DEMO-HARBOR.example.test, ProcessGuid: "{DEMO-HARBOR-0000-0000-0000-000000000236}"}
+    acceptable_equivalences: []
+    note: "The remote command shell spawned PowerShell."
+  - id: DEMO-008
+    direction: source_to_target
+    relation_type: PROCESS_OPENED_CONNECTION
+    source: {line: 236, event_id: 1, Hostname: DEMO-HARBOR.example.test, ProcessGuid: "{DEMO-HARBOR-0000-0000-0000-000000000236}"}
+    target: {line: 237, event_id: 3, Hostname: DEMO-HARBOR.example.test, ProcessGuid: "{DEMO-HARBOR-0000-0000-0000-000000000236}"}
+    acceptable_equivalences: []
+    note: "Remote-host PowerShell opened a documentation-address connection."
+  - id: DEMO-009
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 236, event_id: 1, Hostname: DEMO-HARBOR.example.test, ProcessGuid: "{DEMO-HARBOR-0000-0000-0000-000000000236}"}
+    target: {line: 238, event_id: 1, Hostname: DEMO-HARBOR.example.test, ProcessGuid: "{DEMO-HARBOR-0000-0000-0000-000000000238}"}
+    acceptable_equivalences: []
+    note: "Remote-host PowerShell launched a command shell to inspect a fictional archive share."
+  - id: DEMO-010
+    direction: source_to_target
+    relation_type: PROCESS_OPENED_CONNECTION
+    source: {line: 238, event_id: 1, Hostname: DEMO-HARBOR.example.test, ProcessGuid: "{DEMO-HARBOR-0000-0000-0000-000000000238}"}
+    target: {line: 239, event_id: 3, Hostname: DEMO-HARBOR.example.test, ProcessGuid: "{DEMO-HARBOR-0000-0000-0000-000000000238}"}
+    acceptable_equivalences: []
+    note: "The remote command shell opened a documentation-address connection."
+negative_confounder_pairs:
+  - source: {line: 208, event_id: 1, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000208}"}
+    target: {line: 232, event_id: 1, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000232}"}
+    note: "Both events use rundll32.exe but have different ProcessGuids and no parent-child link."
+  - source: {line: 201, event_id: 1, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000201}"}
+    target: {line: 234, event_id: 1, Hostname: DEMO-HARBOR.example.test, ProcessGuid: "{DEMO-HARBOR-0000-0000-0000-000000000234}"}
+    note: "Two service-looking processes on different fictional hosts are not causally linked."
 telemetry_unobservable:
   - id: DEMO-APORIA-001
     relation_type: PROCESS_OPENED_CONNECTION
     target: {line: 85, event_id: 3, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000009999}"}
+    reason: "No ProcessCreate event exists for this ProcessGuid, so the originating process cannot be established."
+  - id: DEMO-APORIA-002
+    relation_type: PROCESS_OPENED_CONNECTION
+    target: {line: 240, event_id: 3, Hostname: DEMO-HARBOR.example.test, ProcessGuid: "{DEMO-HARBOR-0000-0000-0000-000000009999}"}
     reason: "No ProcessCreate event exists for this ProcessGuid, so the originating process cannot be established."
 unscored_composites: []

@@ -248,18 +248,38 @@ analyst's attention.
 
 ### 6.6 What verification precision does and does not show
 
-**100%, in all twelve runs performed** — two model arms, four batch sizes, two
-window sizes, including runs that failed at everything else.
+**Reported as 100% in all twelve runs — but the figure is narrower than it
+looks, and the narrow reading is the honest one.**
 
-This is a *floor, not an achievement*. The two relations are deterministic joins
-on identifiers, so on well-formed logs they are correct by construction. Any dip
-would mean a defect. It is reported because a dip would be the alarm, not because
-100% is impressive.
+On the practice attack the system issued **794 verified badges**. The answer key
+adjudicates **33** of them. The other **761 were never adjudicated**: the key
+enumerates the attack narrative, not every true relation in the log, so it simply
+has nothing to say about a background process spawn.
 
-The meaningful claim is what it is paired with: **selection quality varied
-enormously across runs — 0% to 66.7% — and not one bad selection ever became a
-verified claim.** Model judgement and verified fact stayed decoupled under every
-condition tested, including a model producing pure noise. That is the thesis.
+So the correct statement of the metric is:
+
+- **Precision on adjudicated key edges: 33/33 (100%)**
+- **Adjudication coverage: 33 of 794 badges (4.2%) — 761 unadjudicated**
+
+**"Nothing was falsely marked verified" is therefore not something this number
+establishes**, and earlier drafts of this paper said so anyway. It is withdrawn.
+What the number establishes is narrower: of the badges the key could rule on,
+none were wrong.
+
+The evidence for the other 761 is different in kind, and weaker to state but
+sound: these two relations are deterministic joins on identifiers, so on
+well-formed logs they are correct by construction, and the adversarial fixture
+suite (§6.7) is what actually tests that construction against malformed input —
+where it found eight defects a clean run never reaches.
+
+That is the real precision argument. The 33/33 is a floor check, not the proof.
+
+The meaningful claim survives the correction, because it does not depend on the
+761: **selection quality varied enormously across runs — 0% to 66.7% — and no
+selection, good or bad, could ever become a verified badge**, since selections are
+held in memory and never enter the claims table at all. That is a structural
+property of the design, not a measured rate, which is why it holds regardless of
+how much of the output the key was able to adjudicate.
 
 ### 6.7 Adversarial tests found what reviews missed
 

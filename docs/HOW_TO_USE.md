@@ -68,29 +68,30 @@ attack.
 
 ## 5. Reading the result
 
-At the end you'll get a block that looks like this:
+At the end you'll get a summary that looks roughly like this:
 
 ```
-Run counts: edges-enumerated=794, edges-verified=794, verified-edges-shown=300,
-            selections=50, ...
-Selection recall:        51.5% (17/33)
-Verification precision: 100.0% (33/33)
+Incident: demo (demo mode, local arm)
+Run counts: edges-enumerated=30, edges-verified=30, selections=9, aporias=2
+
+  Demo mode: no accuracy figures are produced here.
+  This dataset was written by us, so any score would be meaningless.
 ```
 
 In plain terms:
 
 | What it says | What it means |
 |---|---|
-| `edges-enumerated=794` | The tool found 794 provable connections in the log. |
-| `verified-edges-shown=300` | It showed the AI the 300 most suspicious of them. |
-| `selections=50` | The AI picked 50 as attack-related. |
-| `Selection recall: 51.5%` | Of the real attack steps, it found just over half. |
-| `Verification precision: 100%` | **Nothing was wrongly marked as proven.** |
+| `edges-enumerated=30` | The tool found 30 provable connections in the log. |
+| `selections=9` | The AI picked 9 of them as attack-related. |
+| `aporias=2` | Two connections it honestly could not determine. |
 
-**The one to care about is the last one.** It means everything the tool told you
-was *proven* really was proven. It being 100% is expected, not impressive — but
-if it ever drops below 100%, something is broken and you should not trust that
-run.
+**Why no accuracy percentage here?** Because this is the demo dataset, and we
+wrote both the incident *and* the answer key. Scoring our own homework would
+produce a flattering number that means nothing. The tool refuses to compute one.
+
+Accuracy figures come only from the real evaluation data (section 8), where the
+attack was staged by someone else.
 
 ---
 
@@ -136,12 +137,32 @@ other's answer key. You'll always be able to tell which you're looking at.
 ## 8. Running it on the real evaluation data
 
 ```bash
-uv run python scripts/run_incident.py --incident day1 --arm local
+uv run python scripts/run_incident.py --incident day1 --arm local --batch-size 25
 ```
 
 This one is much bigger — around 200,000 log entries — and takes 15–20 minutes
 on a laptop. That is the honest cost of running an AI model locally instead of
 in someone else's data centre.
+
+Here you *do* get accuracy figures:
+
+```
+Selection recall:        51.5% (17/33)
+Precision on adjudicated key edges: 33/33
+Adjudication coverage:   33 of 794 badges (4.2%)
+```
+
+Reading those honestly:
+
+- **51.5%** — it found just over half of the real attack's steps.
+- **33/33** — of the connections the answer key is able to rule on, none were
+  wrong.
+- **4.2%** — but the key only rules on 33 of the 794 connections found. The other
+  761 are ordinary background activity the key never describes, so it cannot
+  vouch for them either way.
+
+That third line matters. A tool that reported only "100%" would be inviting you
+to believe something the evidence does not support.
 
 ---
 
@@ -165,6 +186,10 @@ large applications, especially browsers and Docker.
 **`Selection recall: 0.0%`** — the AI returned nothing usable. Usually it was
 given too much at once. Try adding `--batch-size 25` to your command.
 
+**A number looks too good** — check the first line of output says `eval mode`.
+Demo-mode runs never produce accuracy figures at all; if you are looking at a
+percentage, it came from the real evaluation data.
+
 ---
 
 ## 10. What this tool will not do
@@ -176,6 +201,9 @@ Stated plainly so you don't rely on it for something it can't do:
 - It reads **Windows event logs only**, in one specific format.
 - It finds **just over half** of a real attack's steps in testing — useful as an
   assistant, not a replacement for a human analyst.
+- Its accuracy is measured against an answer key that describes the attack, not
+  every relationship in the log. The key can rule on about 4% of what the tool
+  reports; the rest is untested by that measurement.
 - It cannot prove links the logs never recorded. Roughly a quarter of program
   starts have no recorded parent; those connections are unknowable, and the tool
   will tell you so rather than guess.

@@ -283,9 +283,9 @@ class DemoCorpusTests(unittest.TestCase):
 
         events = load_events(log_path)
 
-        self.assertEqual(len(events), 200)
-        self.assertEqual(sum(event.event["EventID"] == 1 for event in events), 178)
-        self.assertEqual(sum(event.event["EventID"] == 3 for event in events), 2)
+        self.assertEqual(len(events), 400)
+        self.assertEqual(sum(event.event["EventID"] == 1 for event in events), 204)
+        self.assertEqual(sum(event.event["EventID"] == 3 for event in events), 16)
         orphan = events[84].event
         self.assertEqual(orphan["DestinationIp"], "203.0.113.99")
         self.assertNotIn(orphan["ProcessGuid"], {
@@ -324,7 +324,7 @@ class DemoCorpusTests(unittest.TestCase):
             limit_chunks=0,
         )
 
-        self.assertEqual(counts.aporias, 1)
+        self.assertEqual(counts.aporias, 2)
         self.assertEqual(
             connection.execute("SELECT badge FROM claims WHERE badge = 'unverifiable'").fetchone(),
             ("unverifiable",),
