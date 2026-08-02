@@ -194,7 +194,10 @@ def _ollama_response(prompt, seed, model=None):
         "format": PROPOSAL_SCHEMA,
         # Without a cap a rambling model runs to the context limit; with one and
         # no schema it is cut off mid-preamble. Both are needed together.
-        "options": {"num_ctx": 16384, "temperature": 0, "seed": seed, "num_predict": 6000},
+        # 8192 fits an 80-event prompt with room to answer and halves the KV cache
+        # against a machine that was swapping. num_predict is modest because
+        # truncation is now salvaged rather than fatal.
+        "options": {"num_ctx": 8192, "temperature": 0, "seed": seed, "num_predict": 2500},
     }).encode("utf-8")
     request = urllib.request.Request(
         OLLAMA_URL,
