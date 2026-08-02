@@ -27,10 +27,16 @@ def main():
     parser.add_argument("--db", type=Path, default=Path("data/ares.db"))
     parser.add_argument("--limit-chunks", type=int)
     parser.add_argument("--key", type=Path, required=True)
-    # Which local model proposes. MASTER_PLAN section 5 names Foundation-Sec-8B;
+    # Which local model selects. MASTER_PLAN section 5 names Foundation-Sec-8B;
     # revision-8 deviation notes why the default differs. Kept a flag so a
     # different local model is a re-run, not an edit.
-    parser.add_argument("--model", help="override the local proposing model")
+    parser.add_argument("--model", help="override the local selection model")
+    parser.add_argument(
+        "--top-n",
+        type=int,
+        default=300,
+        help="how many prioritised verified edges to show the model (default: 300)",
+    )
     args = parser.parse_args()
 
     args.db.parent.mkdir(parents=True, exist_ok=True)
@@ -45,22 +51,34 @@ def main():
             arm=args.arm,
             limit_chunks=args.limit_chunks,
             model=args.model,
+            top_n=args.top_n,
         )
-        metrics = score_run(connection, args.key, run_incident_id)
+        metrics = score_run(
+            connection,
+            args.key,
+            run_incident_id,
+            selected_edge_ids=counts.selected_edge_ids,
+            enumerated_edge_count=counts.edges_enumerated,
+            verified_edge_count=counts.edges_verified,
+            verified_edges_shown=counts.verified_edges_shown,
+        )
     finally:
         connection.close()
 
     print(f"Incident: {args.incident} ({args.arm} arm, run {run_incident_id.rsplit(':', 1)[1]})")
     print(
         "Run counts: "
-        f"proposals={counts.proposals_made}, badged={counts.badged}, "
+        f"edges-enumerated={counts.edges_enumerated}, "
+        f"edges-verified={counts.edges_verified}, "
+        f"verified-edges-shown={counts.verified_edges_shown}, "
+        f"selections={counts.selections_made}, "
         f"refuted={counts.refuted}, aporias={counts.aporias}, "
         f"discarded-as-malformed={counts.discarded_as_malformed}"
     )
     denominator = metrics["observable_true_edge_count"]
     print(
-        f"Proposal recall: {metrics['proposal_recall']:.1%} "
-        f"({metrics['proposed_true_edge_count']}/{denominator})"
+        f"Selection recall: {metrics['selection_recall']:.1%} "
+        f"({metrics['selected_true_edge_count']}/{denominator})"
     )
     print(
         f"Verification precision: {metrics['verification_precision']:.1%} "
@@ -68,7 +86,7 @@ def main():
     )
     print(
         f"Verified-edge recall: {metrics['verified_edge_recall']:.1%} "
-        f"({metrics['correct_badged_edge_count']}/{denominator})"
+        f"({metrics['verified_selected_true_edge_count']}/{denominator})"
     )
     print(f"Key edges out of scope (SAME_SESSION/WROTE_PATH_BEFORE_EXECUTION): {metrics['out_of_scope_for_build_count']}")
     print(
@@ -76,7 +94,8 @@ def main():
         f"(both events absent from the key — real relations, outside the attack narrative)"
     )
     print(
-        f"  wrong badges caught in-universe: {metrics['in_universe_wrong_badge_count']}, "
+        f"  badges between key-mentioned events not listed in the key: {metrics['in_universe_wrong_badge_count']} "
+        f"(reported, NOT counted false — the key is not an exhaustive list of true relations), "
         f"on hand-listed confounder pairs: {metrics['confounder_badge_count']}"
     )
     # Do not let a clean precision figure be read as a hard-won result.

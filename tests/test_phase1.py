@@ -170,6 +170,38 @@ class PredicateTests(unittest.TestCase):
 
 
 class ScoringTests(unittest.TestCase):
+    def test_score_claims_uses_transient_selection_for_selection_metrics(self):
+        key = {
+            "true_edges": [
+                {"id": "one", "relation_type": SPAWNED, "source": {"line": 1, "Hostname": "a"}, "target": {"line": 2, "Hostname": "a"}, "acceptable_equivalences": []},
+                {"id": "two", "relation_type": SPAWNED, "source": {"line": 3, "Hostname": "a"}, "target": {"line": 4, "Hostname": "a"}, "acceptable_equivalences": []},
+            ],
+        }
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "key.yaml"
+        path.write_text(yaml.safe_dump(key))
+        claims = [
+            {"predicate_type": SPAWNED, "badge": SPAWNED, "source_event_id": "1", "target_event_id": "2", "source_hostname": "a", "target_hostname": "a"},
+            {"predicate_type": SPAWNED, "badge": SPAWNED, "source_event_id": "3", "target_event_id": "4", "source_hostname": "a", "target_hostname": "a"},
+        ]
+
+        result = score_claims(
+            path,
+            claims,
+            selected_edge_ids={"SPAWNED:1:2"},
+            enumerated_edge_count=7,
+            verified_edge_count=6,
+            verified_edges_shown=5,
+        )
+
+        self.assertEqual(result["selection_recall"], 0.5)
+        self.assertEqual(result["verified_edge_recall"], 0.5)
+        self.assertEqual(result["selected_true_edge_count"], 1)
+        self.assertEqual(result["enumerated_edge_count"], 7)
+        self.assertEqual(result["verified_edge_count"], 6)
+        self.assertEqual(result["verified_edges_shown"], 5)
+
     def test_score_claims_counts_an_acceptable_equivalence_once(self):
         key = {
             "true_edges": [
