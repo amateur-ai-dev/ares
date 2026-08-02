@@ -6,6 +6,7 @@ import uuid
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from .dataset_mode import mode_from_log, require_mode
 from .predicates import (
     PROCESS_OPENED_CONNECTION,
     SPAWNED,
@@ -16,7 +17,7 @@ from .predicates import (
 from .phase0 import badge_first_spawned
 from .prioritise import prioritise_edges
 from .proposer import ProposedEdge, render_prompt, select_with_counts
-from .store import create_claim, initialize, persist_predicate_result
+from .store import create_claim, initialize, persist_predicate_result, record_run
 
 
 SYSMON_CHANNEL = "Microsoft-Windows-Sysmon/Operational"
@@ -62,6 +63,7 @@ class VerifiedEdge:
 
 @dataclass(frozen=True)
 class RunCounts:
+    dataset_mode: str = "eval"
     edges_enumerated: int = 0
     edges_verified: int = 0
     verified_edges_shown: int = 0
@@ -327,6 +329,40 @@ def verify_candidate_edges(connection, incident_id, edges, run_id):
     return verified
 
 
+def record_demo_orphan_connections(db, incident_id, events, run_id):
+    """Make the demo's deliberately incomplete telemetry visible as an Aporia.
+
+    Evaluation runs retain their existing candidate universe.  The synthetic demo
+    includes this single, authored limitation so a live walkthrough cannot imply
+    that missing process telemetry is silently treated as evidence.
+    """
+    process_guids = {
+        candidate.event.get("ProcessGuid")
+        for candidate in events
+        if _is_process_create(candidate)
+    }
+    outcomes = []
+    for candidate in events:
+        event = candidate.event
+        if event.get("EventID") != 3 or event.get("ProcessGuid") in process_guids:
+            continue
+        proposal = ProposedEdge(
+            f"missing-process-create:{event['ProcessGuid']}",
+            candidate.line_number,
+            PROCESS_OPENED_CONNECTION,
+            "the connection's originating process has no ProcessCreate record",
+        )
+        _, outcome = _record_proposal(
+            connection=db,
+            incident_id=incident_id,
+            proposal=proposal,
+            events_by_line={candidate.line_number: candidate},
+            run_id=run_id,
+        )
+        outcomes.append(outcome)
+    return outcomes
+
+
 def run_incident(
     connection,
     incident_id,
@@ -342,6 +378,7 @@ def run_incident(
     model=None,
     top_n=300,
     batch_size=None,
+    dataset_mode=None,
 ):
     """Enumerate/verify facts, then ask one model batch to select attack edges."""
     del key_path
@@ -349,6 +386,11 @@ def run_incident(
     if top_n < 1:
         raise ValueError("top_n must be positive")
     initialize(connection)
+    inferred_mode = mode_from_log(log_path)
+    if dataset_mode is not None and require_mode(dataset_mode) != inferred_mode:
+        raise ValueError(
+            f"dataset mode mismatch: requested {dataset_mode!r}, log is {inferred_mode!r}"
+        )
     all_events = load_events(log_path)
     events = [
         candidate
@@ -358,14 +400,24 @@ def run_incident(
         and candidate.event["EventID"] in (1, 3)
     ]
     run_id = run_id or f"{arm}-{uuid.uuid4().hex}"
+    record_run(connection, run_id, incident_id, inferred_mode)
     enumerated = enumerate_candidate_edges(events)
     persisted = verify_candidate_edges(connection, incident_id, enumerated, run_id)
+    demo_aporia_outcomes = (
+        record_demo_orphan_connections(connection, incident_id, events, run_id)
+        if inferred_mode == "demo"
+        else []
+    )
     verified = [item.edge for item in persisted if item.outcome == "true"]
     counts = RunCounts(
+        dataset_mode=inferred_mode,
         edges_enumerated=len(enumerated),
         edges_verified=len(verified),
         refuted=sum(item.outcome == "false" for item in persisted),
-        aporias=sum(item.outcome == "unevaluable" for item in persisted),
+        aporias=(
+            sum(item.outcome == "unevaluable" for item in persisted)
+            + sum(outcome == "unevaluable" for outcome in demo_aporia_outcomes)
+        ),
     )
     # Verification is committed before the potentially slow model call, so a
     # failed selection backend cannot lose independently-derived facts.

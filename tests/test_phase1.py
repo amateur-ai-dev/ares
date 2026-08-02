@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import sys
 import tempfile
@@ -16,7 +17,8 @@ from ares.predicates import (
 )
 from ares import store
 from ares.proposer import parse_proposals
-from ares.scoring import score_claims
+from ares.pipeline import enumerate_candidate_edges, load_events, run_incident
+from ares.scoring import score_claims, score_run
 from ares.store import (
     assign_verified_badge,
     create_claim,
@@ -170,6 +172,163 @@ class PredicateTests(unittest.TestCase):
 
 
 class ScoringTests(unittest.TestCase):
+    def _write_key(self, directory, mode):
+        key = Path(directory) / f"{mode}.edges.yaml"
+        key.write_text(yaml.safe_dump({
+            "schema_version": 1,
+            "dataset_mode": mode,
+            "true_edges": [],
+        }), encoding="utf-8")
+        return key
+
+    def test_score_claims_rejects_a_mode_the_key_disagrees_with(self):
+        """score_run is not the only door into scoring.
+
+        A dashboard or exporter holding claims in memory can call score_claims
+        directly, and that path must not be the one where a demo number acquires
+        an evaluation label.
+        """
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        eval_key = self._write_key(directory.name, "eval")
+        demo_key = self._write_key(directory.name, "demo")
+
+        with self.assertRaises(ValueError):
+            score_claims(eval_key, [], dataset_mode="demo")
+        with self.assertRaises(ValueError):
+            score_claims(demo_key, [], dataset_mode="eval")
+
+    def test_score_claims_without_a_mode_still_scores_corpus_free_fixtures(self):
+        """The fixture suite scores hand-built claims that belong to no corpus."""
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        demo_key = self._write_key(directory.name, "demo")
+
+        metrics = score_claims(demo_key, [])
+        self.assertEqual(metrics["dataset_mode"], "demo")
+
+    def test_score_run_rejects_a_demo_run_against_an_eval_key(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        demo_log = Path(directory.name) / "data" / "demo" / "demo.json"
+        demo_log.parent.mkdir(parents=True)
+        demo_log.write_text("\n".join([
+            json.dumps(process_event("demo.example", "parent")),
+            json.dumps(process_event("demo.example", "child", parent="parent")),
+        ]) + "\n")
+        connection = sqlite3.connect(":memory:")
+        self.addCleanup(connection.close)
+        counts = run_incident(connection, "demo-run", demo_log, "local", limit_chunks=0)
+
+        with self.assertRaisesRegex(ValueError, "dataset mode mismatch"):
+            score_run(
+                connection,
+                Path(__file__).parents[1] / "eval" / "ground_truth" / "apt29-day1.edges.yaml",
+                "demo-run",
+                selected_edge_ids=counts.selected_edge_ids,
+            )
+
+    def test_requested_mode_cannot_override_the_log_location(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        log_path = Path(directory.name) / "data" / "demo" / "demo.json"
+        log_path.parent.mkdir(parents=True)
+        log_path.write_text(json.dumps(process_event("demo.example", "parent")) + "\n")
+        connection = sqlite3.connect(":memory:")
+        self.addCleanup(connection.close)
+
+        with self.assertRaisesRegex(ValueError, "dataset mode mismatch"):
+            run_incident(
+                connection,
+                "demo-run",
+                log_path,
+                "local",
+                limit_chunks=0,
+                dataset_mode="eval",
+            )
+
+    def test_score_run_returns_the_persisted_dataset_mode(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        log_path = Path(directory.name) / "data" / "demo" / "demo.json"
+        log_path.parent.mkdir(parents=True)
+        log_path.write_text("\n".join([
+            json.dumps(process_event("demo.example", "parent")),
+            json.dumps(process_event("demo.example", "child", parent="parent")),
+        ]) + "\n")
+        key_path = Path(directory.name) / "demo.edges.yaml"
+        key_path.write_text(yaml.safe_dump({
+            "dataset_mode": "demo",
+            "true_edges": [{
+                "id": "edge",
+                "relation_type": SPAWNED,
+                "source": {"line": 1, "Hostname": "demo.example"},
+                "target": {"line": 2, "Hostname": "demo.example"},
+                "acceptable_equivalences": [],
+            }],
+        }))
+        connection = sqlite3.connect(":memory:")
+        self.addCleanup(connection.close)
+        counts = run_incident(connection, "demo-run", log_path, "local", limit_chunks=0)
+
+        metrics = score_run(connection, key_path, "demo-run", selected_edge_ids=counts.selected_edge_ids)
+
+        self.assertEqual(counts.dataset_mode, "demo")
+        self.assertEqual(metrics["dataset_mode"], "demo")
+
+
+class DemoCorpusTests(unittest.TestCase):
+    def test_demo_log_has_the_declared_event_count_and_orphan_connection(self):
+        log_path = Path(__file__).parents[1] / "data" / "demo" / "demo-incident.json"
+
+        events = load_events(log_path)
+
+        self.assertEqual(len(events), 200)
+        self.assertEqual(sum(event.event["EventID"] == 1 for event in events), 178)
+        self.assertEqual(sum(event.event["EventID"] == 3 for event in events), 2)
+        orphan = events[84].event
+        self.assertEqual(orphan["DestinationIp"], "203.0.113.99")
+        self.assertNotIn(orphan["ProcessGuid"], {
+            event.event.get("ProcessGuid")
+            for event in events
+            if event.event["EventID"] == 1
+        })
+
+    def test_demo_key_edges_are_enumerated_by_the_real_pipeline(self):
+        root = Path(__file__).parents[1]
+        log_path = root / "data" / "demo" / "demo-incident.json"
+        key_path = root / "eval" / "ground_truth" / "demo.edges.yaml"
+        key = yaml.safe_load(key_path.read_text())
+
+        actual = {
+            (edge.relation_type, edge.source_event_id, edge.target_event_id)
+            for edge in enumerate_candidate_edges(load_events(log_path))
+        }
+        expected = {
+            (edge["relation_type"], str(edge["source"]["line"]), str(edge["target"]["line"]))
+            for edge in key["true_edges"]
+        }
+
+        self.assertSetEqual(actual & expected, expected)
+
+    def test_demo_run_records_the_deliberate_orphan_as_an_aporia(self):
+        root = Path(__file__).parents[1]
+        connection = sqlite3.connect(":memory:")
+        self.addCleanup(connection.close)
+
+        counts = run_incident(
+            connection,
+            "demo-aporia",
+            root / "data" / "demo" / "demo-incident.json",
+            "local",
+            limit_chunks=0,
+        )
+
+        self.assertEqual(counts.aporias, 1)
+        self.assertEqual(
+            connection.execute("SELECT badge FROM claims WHERE badge = 'unverifiable'").fetchone(),
+            ("unverifiable",),
+        )
     def test_score_claims_uses_transient_selection_for_selection_metrics(self):
         key = {
             "true_edges": [

@@ -1,0 +1,49 @@
+# This synthetic key is exact by construction because this demo log was authored here.
+# That is precisely why its numbers are demo evidence, never evaluation evidence.
+schema_version: 1
+artifact: demo-incident-edge-ground-truth
+dataset_mode: demo
+incident:
+  name: Synthetic ARES demo incident
+  source_log: data/demo/demo-incident.json
+  identity_scheme: one_based_ndjson_line
+eligibility:
+  sysmon_event_ids: [1, 3, 7, 11]
+  hostname_required_for_every_predicate: true
+  canonical_action_records: {"1": ProcessCreate, "3": NetworkConnect, "7": ImageLoad, "11": FileCreate}
+  equivalence_grammar:
+    canonical_reference: [one_based_ndjson_line]
+    alternate_references: []
+matching_algorithm:
+  - Match identical source, target, relation_type, and Hostname values.
+  - Deduplicate identical resolved triples before scoring.
+observable_true_edge_set: "All true_edges below; the orphan connection is deliberately not a true edge because its source process record is absent."
+true_edges:
+  - id: DEMO-001
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 81, event_id: 1, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000081}"}
+    target: {line: 82, event_id: 1, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000082}"}
+    acceptable_equivalences: []
+    note: "Office document process spawned cmd.exe."
+  - id: DEMO-002
+    direction: source_to_target
+    relation_type: SPAWNED
+    source: {line: 82, event_id: 1, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000082}"}
+    target: {line: 83, event_id: 1, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000083}"}
+    acceptable_equivalences: []
+    note: "cmd.exe spawned encoded PowerShell."
+  - id: DEMO-003
+    direction: source_to_target
+    relation_type: PROCESS_OPENED_CONNECTION
+    source: {line: 83, event_id: 1, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000083}"}
+    target: {line: 84, event_id: 3, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000000083}"}
+    acceptable_equivalences: []
+    note: "Encoded PowerShell opened a connection to RFC 5737 documentation address 203.0.113.44."
+negative_confounder_pairs: []
+telemetry_unobservable:
+  - id: DEMO-APORIA-001
+    relation_type: PROCESS_OPENED_CONNECTION
+    target: {line: 85, event_id: 3, Hostname: DEMO-ORCHARD.example.test, ProcessGuid: "{DEMO-ORCHARD-0000-0000-0000-000000009999}"}
+    reason: "No ProcessCreate event exists for this ProcessGuid, so the originating process cannot be established."
+unscored_composites: []

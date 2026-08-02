@@ -14,19 +14,33 @@ from ares.scoring import score_run
 from ares.store import initialize
 
 
-LOGS = {
-    "day1": Path("/Users/nithingowda/.ares/datasets/apt29/day1/apt29_evals_day1_manual_2020-05-01225525.json"),
-    "day2": Path("/Users/nithingowda/.ares/datasets/apt29/day2/apt29_evals_day2_manual_2020-05-02035409.json"),
+DATASETS = {
+    "day1": {
+        "log": Path("/Users/nithingowda/.ares/datasets/apt29/day1/apt29_evals_day1_manual_2020-05-01225525.json"),
+        "key": Path("eval/ground_truth/apt29-day1.edges.yaml"),
+        "mode": "eval",
+    },
+    "day2": {
+        "log": Path("/Users/nithingowda/.ares/datasets/apt29/day2/apt29_evals_day2_manual_2020-05-02035409.json"),
+        "key": Path("eval/ground_truth/apt29-day2.edges.yaml"),
+        "mode": "eval",
+    },
+    "demo": {
+        "log": Path("data/demo/demo-incident.json"),
+        "key": Path("eval/ground_truth/demo.edges.yaml"),
+        "mode": "demo",
+    },
 }
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--incident", choices=LOGS, required=True)
+    parser.add_argument("--incident", choices=DATASETS, required=True)
     parser.add_argument("--arm", choices=("local", "frontier"), required=True)
-    parser.add_argument("--db", type=Path, default=Path("data/ares.db"))
+    parser.add_argument("--db", type=Path)
     parser.add_argument("--limit-chunks", type=int)
-    parser.add_argument("--key", type=Path, required=True)
+    parser.add_argument("--key", type=Path)
+    parser.add_argument("--mode", choices=("demo", "eval"))
     # Which local model selects. MASTER_PLAN section 5 names Foundation-Sec-8B;
     # revision-8 deviation notes why the default differs. Kept a flag so a
     # different local model is a re-run, not an edit.
@@ -44,25 +58,30 @@ def main():
              "(default: one call for all of them)",
     )
     args = parser.parse_args()
+    dataset = DATASETS[args.incident]
+    key_path = args.key or dataset["key"]
+    db_path = args.db or Path("data") / dataset["mode"] / "ares.db"
+    mode = args.mode or dataset["mode"]
 
-    args.db.parent.mkdir(parents=True, exist_ok=True)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     run_incident_id = f"{args.incident}:{args.arm}:{uuid.uuid4().hex}"
-    connection = sqlite3.connect(args.db)
+    connection = sqlite3.connect(db_path)
     try:
         initialize(connection)
         counts = run_incident(
             connection,
             incident_id=run_incident_id,
-            log_path=LOGS[args.incident],
+            log_path=dataset["log"],
             arm=args.arm,
             limit_chunks=args.limit_chunks,
             model=args.model,
             top_n=args.top_n,
             batch_size=args.batch_size,
+            dataset_mode=mode,
         )
         metrics = score_run(
             connection,
-            args.key,
+            key_path,
             run_incident_id,
             selected_edge_ids=counts.selected_edge_ids,
             enumerated_edge_count=counts.edges_enumerated,
@@ -72,7 +91,7 @@ def main():
     finally:
         connection.close()
 
-    print(f"Incident: {args.incident} ({args.arm} arm, run {run_incident_id.rsplit(':', 1)[1]})")
+    print(f"Incident: {args.incident} ({counts.dataset_mode} mode, {args.arm} arm, run {run_incident_id.rsplit(':', 1)[1]})")
     print(
         "Run counts: "
         f"edges-enumerated={counts.edges_enumerated}, "

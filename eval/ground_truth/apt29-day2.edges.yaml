@@ -1,5 +1,6 @@
 schema_version: 1
 artifact: apt29-day2-edge-ground-truth
+dataset_mode: eval
 incident:
   name: APT29 ATT&CK Evaluations Round 2, Day 2
   source_log: /Users/nithingowda/.ares/datasets/apt29/day2/apt29_evals_day2_manual_2020-05-02035409.json

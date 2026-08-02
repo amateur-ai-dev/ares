@@ -4,7 +4,8 @@ from pathlib import Path
 
 import yaml
 
-from .store import PREDICATE_BADGES
+from .dataset_mode import mode_from_key, require_mode
+from .store import PREDICATE_BADGES, run_mode
 
 
 CUT_PREDICATES = {"SAME_SESSION", "WROTE_PATH_BEFORE_EXECUTION"}
@@ -52,15 +53,29 @@ def score_claims(
     enumerated_edge_count=0,
     verified_edge_count=0,
     verified_edges_shown=0,
+    dataset_mode=None,
 ):
     """Score verified facts and transient model selections against the frozen key.
 
     Selection is interpretation, deliberately kept out of the claims table.  A
     ``None`` selection set preserves the legacy all-claims behaviour for direct
     callers; production runs always pass the model's verified-edge IDs.
+
+    ``dataset_mode`` is the caller's belief about which corpus these claims came
+    from.  ``score_run`` enforces the same agreement against the mode recorded in
+    the database, but it is not the only way in: a dashboard or exporter holding
+    claims in memory can reach this function directly, and that path must not be
+    the one where a demo number acquires an evaluation label.  Passing ``None``
+    asserts nothing and is left available for the fixture suite, which scores
+    hand-built claim lists that belong to no corpus at all.
     """
     with Path(key_path).open(encoding="utf-8") as source:
         key = yaml.safe_load(source)
+    key_mode = mode_from_key(key_path, key)
+    if dataset_mode is not None and require_mode(dataset_mode) != key_mode:
+        raise ValueError(
+            f"dataset mode mismatch: claims are {dataset_mode!r}, key is {key_mode!r}"
+        )
 
     observable = [edge for edge in key.get("true_edges", []) if edge["relation_type"] not in CUT_PREDICATES]
     out_of_scope = [edge for edge in key.get("true_edges", []) if edge["relation_type"] in CUT_PREDICATES]
@@ -134,6 +149,7 @@ def score_claims(
     total_badges = correct_badges + false_badges
     precision = correct_badges / total_badges if total_badges else 0.0
     return {
+        "dataset_mode": key_mode,
         "out_of_universe_badge_count": len(out_of_universe_badges),
         "in_universe_wrong_badge_count": len(in_universe_not_in_key),
         "confounder_badge_count": len(negative_badges),
@@ -168,6 +184,14 @@ def score_run(
     verified_edges_shown=0,
 ):
     """Score all stored claims for one incident against a frozen YAML key."""
+    with Path(key_path).open(encoding="utf-8") as source:
+        key = yaml.safe_load(source)
+    recorded_mode = run_mode(connection, incident_id)
+    key_mode = mode_from_key(key_path, key)
+    if recorded_mode != key_mode:
+        raise ValueError(
+            f"dataset mode mismatch: run is {recorded_mode!r}, key is {key_mode!r}"
+        )
     cursor = connection.execute(
         """
         SELECT predicate_type, badge, source_event_id, target_event_id,
@@ -185,4 +209,5 @@ def score_run(
         enumerated_edge_count=enumerated_edge_count,
         verified_edge_count=verified_edge_count,
         verified_edges_shown=verified_edges_shown,
+        dataset_mode=recorded_mode,
     )

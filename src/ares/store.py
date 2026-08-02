@@ -15,6 +15,13 @@ def initialize(connection):
     connection.execute("PRAGMA foreign_keys = ON")
     predicate_badges = ", ".join(repr(badge) for badge in PREDICATE_BADGES)
     connection.executescript(f"""
+        CREATE TABLE IF NOT EXISTS runs (
+            run_id TEXT PRIMARY KEY,
+            incident_id TEXT NOT NULL,
+            dataset_mode TEXT NOT NULL CHECK (dataset_mode IN ('demo', 'eval')),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS claims (
             id INTEGER PRIMARY KEY,
             incident_id TEXT NOT NULL,
@@ -135,6 +142,24 @@ def initialize(connection):
             ) THEN RAISE(ABORT, 'badge firewall: no matching verifier execution') END;
         END;
     """)
+
+
+def record_run(connection, run_id, incident_id, dataset_mode):
+    """Persist the identity that every later metric must carry."""
+    connection.execute(
+        "INSERT INTO runs (run_id, incident_id, dataset_mode) VALUES (?, ?, ?)",
+        (run_id, incident_id, dataset_mode),
+    )
+
+
+def run_mode(connection, incident_id):
+    row = connection.execute(
+        "SELECT dataset_mode FROM runs WHERE incident_id = ? ORDER BY created_at DESC LIMIT 1",
+        (incident_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"no recorded run for incident {incident_id!r}")
+    return row[0]
 
 
 def create_claim(
