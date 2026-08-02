@@ -3,6 +3,7 @@ name = "ares"
 version = "0.0.0"
 requires-python = ">=3.12"
 dependencies = [
+    "jinja2>=3.1.6",
     "mitreattack-python>=6.1.0",
     "openpyxl>=3.1.5",
     "pyyaml>=6.0.3",

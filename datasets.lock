@@ -14,3 +14,14 @@ apt29/day2/apt29_evals_day2_manual_2020-05-02035409.json fd4043c9ad2382f57da8824
 # This 4.9GB GGUF is loaded and executed by Ollama, but was fetched with TLS-only
 # integrity while much smaller evaluation archives were digest-pinned; pin it too.
 models/foundation-sec-8b-q4km.gguf 7a61e41b1ca1b339d41caf3001ea7832469d866e7c52a23980a1e95cbf5cd58b
+# Hayabusa release binary. Downloaded, extracted and EXECUTED by
+# scripts/setup_toolchain.sh, so an unverified archive here is arbitrary code
+# execution on anyone who follows the documented install path.
+#
+# PROVENANCE, stated plainly: Yamato-Security publishes no checksum file with
+# this release, so this digest is trust-on-first-use - recorded from the archive
+# this project actually downloaded and ran, on 2026-08-02. It proves the bytes
+# have not changed since then. It does NOT prove they were the vendor's intended
+# bytes at that moment. That is weaker than the OTRF pins above, which came with
+# published digests, and the difference is real rather than cosmetic.
+hayabusa-3.10.0-mac-aarch64.zip b6c79d1983f3007f2f71c6794cfd856a16ffd00ea22fe643000193ce6ff3bf85

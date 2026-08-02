@@ -38,6 +38,15 @@ if [[ ! -f "$hayabusa_binary" || ! -x "$hayabusa_binary" ]]; then
   stage_dir="$(mktemp -d)"
   trap 'rm -rf "$stage_dir"' EXIT
   curl --fail --location --output "$stage_dir/hayabusa.zip" "https://github.com/Yamato-Security/hayabusa/releases/download/v3.10.0/hayabusa-3.10.0-mac-aarch64.zip"
+  # Verify BEFORE extraction, not after. This archive is unpacked and its binary
+  # is executed further down, so a compromised release asset would be code
+  # execution on whoever ran the documented install. The GGUF and the EVTX sample
+  # were already checked this way; this one was the gap.
+  verify_file "$stage_dir/hayabusa.zip" 'hayabusa-3.10.0-mac-aarch64.zip' || {
+    printf 'Hayabusa archive checksum verification failed - refusing to extract or run it.\n' >&2
+    printf 'Expected digest is pinned in %s.\n' "$lock_file" >&2
+    exit 1
+  }
   mkdir -p "$hayabusa_dir"
   unzip -q "$stage_dir/hayabusa.zip" -d "$hayabusa_dir"
 fi
