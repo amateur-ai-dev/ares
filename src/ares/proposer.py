@@ -111,14 +111,8 @@ def _decode_model_json(raw_text):
             decoded, _ = decoder.raw_decode(value[index:])
         except json.JSONDecodeError:
             continue
-        # A lone proposal object means the wrapper was truncated and we happened
-        # to land inside it. Falling through to salvage recovers the whole run of
-        # completed entries instead of just this one.
-        if isinstance(decoded, dict) and not ({"edges", "proposals"} & set(decoded)):
-            break
         return decoded
-    salvaged = _salvage_objects(value)
-    return {"edges": salvaged} if salvaged else None
+    return None
 
 
 def _valid_event_id(value):
@@ -131,7 +125,12 @@ def parse_proposals(raw_text, allowed_event_ids):
     if isinstance(decoded, dict):
         decoded = decoded.get("proposals", decoded.get("edges"))
     if not isinstance(decoded, list):
-        return [], 1
+        # Either nothing parsed, or we landed inside a single entry because the
+        # wrapper never closed. Salvage the entries that did complete before the
+        # cut; every filter below still applies to them.
+        decoded = _salvage_objects(_escape_control_characters(_strip_markdown_fences(raw_text)))
+        if not decoded:
+            return [], 1
 
     allowed = {str(event_id) for event_id in allowed_event_ids}
     proposals = []

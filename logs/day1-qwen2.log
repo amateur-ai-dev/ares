@@ -1,0 +1,15 @@
+Traceback (most recent call last):
+  File "/Users/nithingowda/ares/scripts/run_incident.py", line 93, in <module>
+    main()
+  File "/Users/nithingowda/ares/scripts/run_incident.py", line 41, in main
+    counts = run_incident(
+             ^^^^^^^^^^^^^
+  File "/Users/nithingowda/ares/src/ares/pipeline.py", line 185, in run_incident
+    response = propose_with_counts(arm, prompt, allowed_event_ids, seed, model)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/nithingowda/ares/src/ares/proposer.py", line 243, in propose_with_counts
+    raw_text = _ollama_response(prompt, seed, model)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/nithingowda/ares/src/ares/proposer.py", line 216, in _ollama_response
+    raise ValueError("Ollama response did not contain message.content")
+ValueError: Ollama response did not contain message.content
