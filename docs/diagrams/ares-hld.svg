@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1010" width="1400" height="1010" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#5a6472"/>
+    </marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#a89a97"/>
+    </marker>
+    <style>
+      .box  { fill:#ffffff; stroke:#c9cdd4; stroke-width:2; rx:8; }
+      .band { fill:#f4f2ed; stroke:#dcd8ce; stroke-width:2; rx:10; }
+      .lbl  { font-size:15px; fill:#7b8492; letter-spacing:2px; font-weight:700; }
+      .h    { font-size:22px; fill:#1b212b; font-weight:600; }
+      .s    { font-size:16px; fill:#6b7382; }
+      .line { stroke:#5a6472; stroke-width:2.4; fill:none; marker-end:url(#a); }
+      .dash { stroke:#a89a97; stroke-width:2.2; fill:none; stroke-dasharray:7 6; marker-end:url(#b); }
+      .edge { font-size:15px; fill:#5a6472; font-style:italic; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="1010" fill="#fbfaf7"/>
+
+  <text x="80" y="62" font-size="34" fill="#1b212b" font-weight="600">ARES — High-Level Design</text>
+  <text x="80" y="94" font-size="18" fill="#6b7382">Locally-hosted incident analysis. Nothing leaves the machine.</text>
+  <line x1="80" y1="118" x2="1320" y2="118" stroke="#1b212b" stroke-width="2.5"/>
+
+  <!-- INPUT -->
+  <text x="120" y="168" class="lbl">INPUT</text>
+  <rect class="box" x="120" y="186" width="420" height="104"/>
+  <text x="152" y="228" class="h">Windows event logs</text>
+  <text x="152" y="258" class="s">Sysmon JSON · untrusted input</text>
+
+  <path class="line" d="M330 290 L330 356"/>
+
+  <!-- CORE -->
+  <text x="120" y="396" class="lbl">ARES CORE</text>
+  <rect class="band" x="80" y="414" width="1000" height="252"/>
+
+  <rect x="120" y="454" width="420" height="176" fill="#eaf2ee" stroke="#2f5d50" stroke-width="3" rx="8"/>
+  <text x="152" y="498" class="h" fill="#22493e">Deterministic verifier</text>
+  <text x="152" y="532" class="s">Finds and proves every link</text>
+  <text x="152" y="560" class="s">VERIFIED · REFUTED · APORIA</text>
+  <text x="152" y="600" font-size="16" fill="#22493e" font-weight="700">Cannot be overridden</text>
+
+  <rect x="620" y="454" width="420" height="176" fill="#fdf3e9" stroke="#a8722c" stroke-width="3" rx="8"/>
+  <text x="652" y="498" class="h" fill="#8a5a1d">Local AI model</text>
+  <text x="652" y="532" class="s">Picks which proven links</text>
+  <text x="652" y="560" class="s">are the attack</text>
+  <text x="652" y="600" font-size="16" fill="#8a5a1d" font-weight="700">Advisory only</text>
+
+  <text x="580" y="512" class="edge" text-anchor="middle">only proven</text>
+  <text x="580" y="534" class="edge" text-anchor="middle">links</text>
+  <path class="line" d="M540 566 L616 566"/>
+
+  <!-- CLOUD -->
+  <rect x="1128" y="454" width="192" height="176" fill="#faf1f0" stroke="#b98a86" stroke-width="2.5" stroke-dasharray="7 6" rx="8"/>
+  <text x="1152" y="498" font-size="19" fill="#8c3a3a" font-weight="600">Cloud model</text>
+  <text x="1152" y="530" font-size="15" fill="#8c3a3a">Testing only.</text>
+  <text x="1152" y="556" font-size="15" fill="#8c3a3a">Off by default.</text>
+  <text x="1152" y="596" font-size="15" fill="#8c3a3a" font-weight="700">Never in a demo</text>
+  <path class="dash" d="M1040 542 L1124 542"/>
+
+  <path class="line" d="M330 666 L330 726"/>
+
+  <!-- STORAGE -->
+  <text x="120" y="766" class="lbl">STORAGE</text>
+  <rect class="box" x="120" y="784" width="420" height="112"/>
+  <text x="152" y="826" class="h">SQLite</text>
+  <text x="152" y="858" class="s">Proven facts only.</text>
+  <text x="152" y="884" class="s">The model's picks are never stored.</text>
+
+  <!-- OUTPUT -->
+  <text x="620" y="766" class="lbl">OUTPUT</text>
+  <rect class="box" x="620" y="784" width="330" height="112"/>
+  <text x="652" y="828" class="h">Dashboard</text>
+  <text x="652" y="862" class="s">127.0.0.1 · read-only</text>
+
+  <rect class="box" x="990" y="784" width="330" height="112"/>
+  <text x="1022" y="828" class="h">Reports</text>
+  <text x="1022" y="862" class="s">Markdown · HTML</text>
+
+  <path class="line" d="M540 840 L616 840"/>
+  <path class="line" d="M950 840 L986 840"/>
+
+  <line x1="80" y1="946" x2="1320" y2="946" stroke="#dcd8ce" stroke-width="1.5"/>
+  <text x="80" y="980" font-size="18" fill="#3c4655">The model can be wrong about what matters. It cannot make the tool assert something false.</text>
+</svg>

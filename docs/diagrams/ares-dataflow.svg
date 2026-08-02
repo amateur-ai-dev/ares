@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 980" width="1400" height="980" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#5a6472"/>
+    </marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#a0a8b4"/>
+    </marker>
+    <style>
+      .box  { fill:#ffffff; stroke:#c9cdd4; stroke-width:2; rx:8; }
+      .n    { font-size:19px; fill:#ffffff; font-weight:700; text-anchor:middle; }
+      .h    { font-size:22px; fill:#1b212b; font-weight:600; }
+      .s    { font-size:16px; fill:#6b7382; }
+      .line { stroke:#5a6472; stroke-width:2.4; fill:none; marker-end:url(#a); }
+      .dash { stroke:#a0a8b4; stroke-width:2.2; fill:none; stroke-dasharray:7 6; marker-end:url(#b); }
+    </style>
+  </defs>
+
+  <rect width="1400" height="980" fill="#fbfaf7"/>
+
+  <text x="80" y="62" font-size="34" fill="#1b212b" font-weight="600">ARES — Data Flow</text>
+  <text x="80" y="94" font-size="18" fill="#6b7382">How one incident moves through the tool, start to finish.</text>
+  <line x1="80" y1="118" x2="1320" y2="118" stroke="#1b212b" stroke-width="2.5"/>
+
+  <!-- 1 -->
+  <rect class="box" x="80" y="164" width="560" height="104"/>
+  <circle cx="128" cy="216" r="21" fill="#3f6394"/><text x="128" y="223" class="n">1</text>
+  <text x="170" y="208" class="h">Read the log</text>
+  <text x="170" y="240" class="s">Every recorded event on the machine</text>
+  <path class="line" d="M360 268 L360 316"/>
+
+  <!-- 2 -->
+  <rect class="box" x="80" y="326" width="560" height="104"/>
+  <circle cx="128" cy="378" r="21" fill="#3f6394"/><text x="128" y="385" class="n">2</text>
+  <text x="170" y="370" class="h">Find every possible link</text>
+  <text x="170" y="402" class="s">Ordinary code. No AI involved.</text>
+  <path class="line" d="M360 430 L360 478"/>
+
+  <!-- 3 -->
+  <rect x="80" y="488" width="560" height="128" fill="#eaf2ee" stroke="#2f5d50" stroke-width="3" rx="8"/>
+  <circle cx="128" cy="552" r="21" fill="#2f5d50"/><text x="128" y="559" class="n">3</text>
+  <text x="170" y="530" class="h" fill="#22493e">Prove or refuse each one</text>
+  <text x="170" y="562" class="s">VERIFIED · REFUTED · APORIA</text>
+  <text x="170" y="594" font-size="16" fill="#22493e" font-weight="700">Badge locked. Cannot be changed later.</text>
+  <path class="line" d="M360 616 L360 664"/>
+
+  <!-- 4 -->
+  <rect class="box" x="80" y="674" width="560" height="104"/>
+  <circle cx="128" cy="726" r="21" fill="#3f6394"/><text x="128" y="733" class="n">4</text>
+  <text x="170" y="718" class="h">Rank by suspicion</text>
+  <text x="170" y="750" class="s">Decides what the model is shown</text>
+
+  <path class="line" d="M640 726 L756 726"/>
+
+  <!-- 5 -->
+  <rect x="760" y="674" width="560" height="104" fill="#fdf3e9" stroke="#a8722c" stroke-width="3" rx="8"/>
+  <circle cx="808" cy="726" r="21" fill="#a8722c"/><text x="808" y="733" class="n">5</text>
+  <text x="850" y="718" class="h" fill="#8a5a1d">The AI picks the attack</text>
+  <text x="850" y="750" class="s">Reads the proven links, selects the relevant ones</text>
+
+  <path class="line" d="M1040 674 L1040 626"/>
+
+  <!-- 6 -->
+  <rect class="box" x="760" y="488" width="560" height="128"/>
+  <circle cx="808" cy="552" r="21" fill="#3f6394"/><text x="808" y="559" class="n">6</text>
+  <text x="850" y="530" class="h">Score against the answer key</text>
+  <text x="850" y="562" class="s">Evaluation runs only.</text>
+  <text x="850" y="594" class="s">Demo runs produce no score at all.</text>
+  <path class="line" d="M1040 488 L1040 440"/>
+
+  <!-- 7 -->
+  <rect class="box" x="760" y="326" width="560" height="104"/>
+  <circle cx="808" cy="378" r="21" fill="#3f6394"/><text x="808" y="385" class="n">7</text>
+  <text x="850" y="370" class="h">Show the analyst</text>
+  <text x="850" y="402" class="s">Dashboard and reports · Aporias never hidden</text>
+
+  <!-- memory boundary -->
+  <path class="dash" d="M1040 778 L1040 826"/>
+  <rect x="760" y="836" width="560" height="120" fill="#f7f6f3" stroke="#a0a8b4" stroke-width="2" stroke-dasharray="7 6" rx="8"/>
+  <text x="792" y="878" class="h" font-size="20">The AI's picks are never saved</text>
+  <text x="792" y="910" class="s">They live in memory for one run, then go.</text>
+  <text x="792" y="938" class="s">A model's opinion cannot become a stored fact.</text>
+
+  <!-- left legend -->
+  <rect x="80" y="836" width="560" height="120" fill="#f7f6f3" stroke="#c9cdd4" stroke-width="2" rx="8"/>
+  <rect x="112" y="866" width="26" height="26" fill="#eaf2ee" stroke="#2f5d50" stroke-width="3" rx="4"/>
+  <text x="154" y="885" class="s" fill="#1b212b">Deterministic — same answer every time</text>
+  <rect x="112" y="908" width="26" height="26" fill="#fdf3e9" stroke="#a8722c" stroke-width="3" rx="4"/>
+  <text x="154" y="927" class="s" fill="#1b212b">Interpretive — the model's judgement</text>
+
+</svg>
