@@ -2,7 +2,9 @@ import json
 import sqlite3
 import sys
 import tempfile
+import threading
 import unittest
+import socket
 from pathlib import Path
 
 import yaml
@@ -32,6 +34,8 @@ from ares.store import (
     persist_predicate_result,
     record_verifier_execution,
 )
+from ares.report import build_report, render_html, render_markdown
+from ares.dashboard import make_handler
 
 
 SYSMON = "Microsoft-Windows-Sysmon/Operational"
@@ -579,3 +583,94 @@ class TemplateEscapingTests(unittest.TestCase):
         self.assertIn("default-src 'none'", CONTENT_SECURITY_POLICY)
         self.assertNotIn("script-src", CONTENT_SECURITY_POLICY)
         self.assertIn("Content-Security-Policy", CSP_META_TAG)
+
+
+class ReportDashboardTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.db_path = Path(self.directory.name) / "ares.db"
+        self.connection = sqlite3.connect(self.db_path)
+        self.addCleanup(self.connection.close)
+        initialize(self.connection)
+
+    def _run(self, mode="demo"):
+        run_id = f"run-{mode}"
+        incident_id = "day1:report-test" if mode == "eval" else f"incident-{mode}"
+        self.connection.execute(
+            "INSERT INTO runs (run_id, incident_id, dataset_mode) VALUES (?, ?, ?)",
+            (run_id, incident_id, mode),
+        )
+        self.connection.commit()
+        return run_id
+
+    def _request(self, request):
+        client, server = socket.socketpair()
+        self.addCleanup(client.close)
+        self.addCleanup(server.close)
+        handler = make_handler(self.db_path)
+        fake_server = type("Server", (), {"server_port": 8420})()
+        thread = threading.Thread(target=handler, args=(server, ("127.0.0.1", 0), fake_server))
+        thread.start()
+        client.sendall(request)
+        response = client.recv(65536).decode("utf-8")
+        thread.join()
+        return response
+
+    def test_stored_rationale_payload_is_inert_in_dashboard_and_html_report(self):
+        run_id = self._run()
+        payload = "<script>alert('xss')</script>"
+        self.connection.execute(
+            """
+            INSERT INTO model_selections (run_id, edge_id, rationale, attack_technique_id)
+            VALUES (?, ?, ?, ?)
+            """,
+            (run_id, "SPAWNED:1:2", payload, "T1059"),
+        )
+        self.connection.commit()
+        report_html = render_html(build_report(self.connection, run_id))
+        from ares.dashboard import render_run_detail
+        dashboard_html = render_run_detail(build_report(self.connection, run_id))
+        for output in (dashboard_html, report_html):
+            self.assertNotIn(payload, output)
+            self.assertIn("&lt;script&gt;", output)
+
+    def test_demo_report_has_no_percentage(self):
+        report = build_report(self.connection, self._run("demo"))
+        markdown = render_markdown(report)
+        self.assertNotIn("%", markdown)
+        self.assertIn("no accuracy figures are produced", markdown)
+
+    def test_eval_precision_always_carries_adjudication_coverage(self):
+        report = build_report(self.connection, self._run("eval"))
+        markdown = render_markdown(report)
+        self.assertIn("Precision on adjudicated key edges:", markdown)
+        self.assertIn("Adjudication coverage:", markdown)
+
+    def test_rejects_unrecognised_host_header(self):
+        response = self._request(b"GET / HTTP/1.1\r\nHost: evil.example\r\n\r\n")
+        self.assertIn(" 403 ", response.splitlines()[0])
+
+    def test_rejects_non_get_method(self):
+        response = self._request(b"POST / HTTP/1.1\r\nHost: localhost:8420\r\n\r\n")
+        self.assertIn(" 405 ", response.splitlines()[0])
+
+
+class CspEmissionTests(unittest.TestCase):
+    """The CSP must reach the page as markup, not as escaped text.
+
+    Escaped, it did both halves of the damage at once: the policy appeared as
+    visible gibberish at the top of every page, and the page had no CSP at all.
+    """
+
+    def test_csp_renders_as_a_tag(self):
+        rendered = render_string("<head>{{ CSP_META_TAG }}</head>")
+        self.assertIn('<meta http-equiv="Content-Security-Policy"', rendered)
+        self.assertNotIn("&lt;meta", rendered)
+
+    def test_untrusted_values_are_still_escaped_alongside_it(self):
+        rendered = render_string(
+            "<head>{{ CSP_META_TAG }}</head><p>{{ v }}</p>", v="<script>x</script>"
+        )
+        self.assertIn('<meta http-equiv=', rendered)
+        self.assertIn("&lt;script&gt;", rendered)
