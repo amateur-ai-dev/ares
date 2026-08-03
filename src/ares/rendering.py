@@ -24,6 +24,7 @@ document itself.
 from urllib.parse import urlsplit
 
 from jinja2 import Environment, StrictUndefined, select_autoescape
+from markupsafe import Markup
 
 
 # No external origins at all: no CDN, no fonts, no analytics. Everything ARES
@@ -110,7 +111,12 @@ def build_environment(loader=None):
     for name in ("safe", "Markup", "escape_silent"):
         environment.filters[name] = _refuse(name)
     environment.filters["url"] = safe_url
-    environment.globals["CSP_META_TAG"] = CSP_META_TAG
+    # The one value that must reach the page as markup rather than as text.
+    # Marking it here - a constant defined in this module, never touched by log
+    # data or model output - is what lets the `|safe` filter stay disabled for
+    # everything a template could point at. Escaped, it rendered the policy as
+    # visible gibberish AND left the page with no CSP at all.
+    environment.globals["CSP_META_TAG"] = Markup(CSP_META_TAG)
     environment.globals["content_security_policy"] = CONTENT_SECURITY_POLICY
     return environment
 
