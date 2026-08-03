@@ -77,6 +77,15 @@ def initialize(connection):
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS model_selections (
+            id INTEGER PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES runs(run_id),
+            edge_id TEXT NOT NULL,
+            rationale TEXT NOT NULL,
+            attack_technique_id TEXT,
+            UNIQUE (run_id, edge_id)
+        );
+
         CREATE TRIGGER IF NOT EXISTS verifier_executions_immutable_update
         BEFORE UPDATE ON verifier_executions
         BEGIN
@@ -149,6 +158,18 @@ def record_run(connection, run_id, incident_id, dataset_mode):
     connection.execute(
         "INSERT INTO runs (run_id, incident_id, dataset_mode) VALUES (?, ?, ?)",
         (run_id, incident_id, dataset_mode),
+    )
+
+
+def record_model_selection(connection, run_id, edge_id, rationale, attack_technique_id):
+    """Persist the model's interpretation separately from verified evidence."""
+    connection.execute(
+        """
+        INSERT OR REPLACE INTO model_selections (
+            run_id, edge_id, rationale, attack_technique_id
+        ) VALUES (?, ?, ?, ?)
+        """,
+        (run_id, edge_id, rationale, attack_technique_id),
     )
 
 

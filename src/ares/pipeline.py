@@ -17,7 +17,13 @@ from .predicates import (
 from .phase0 import badge_first_spawned
 from .prioritise import prioritise_edges
 from .proposer import ProposedEdge, render_prompt, select_with_counts
-from .store import create_claim, initialize, persist_predicate_result, record_run
+from .store import (
+    create_claim,
+    initialize,
+    persist_predicate_result,
+    record_model_selection,
+    record_run,
+)
 
 
 SYSMON_CHANNEL = "Microsoft-Windows-Sysmon/Operational"
@@ -463,6 +469,15 @@ def run_incident(
             discarded += 1
             continue
         accepted_selections.append(selection)
+    for selection in accepted_selections:
+        record_model_selection(
+            connection,
+            run_id,
+            selection.edge_id,
+            selection.rationale,
+            selection.attack_technique_id,
+        )
+    connection.commit()
     selected_edge_ids = frozenset(selection.edge_id for selection in accepted_selections)
     counts = replace(
         counts,
