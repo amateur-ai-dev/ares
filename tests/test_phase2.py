@@ -633,3 +633,82 @@ class ReferrerPolicyTests(unittest.TestCase):
 
     def test_an_opaque_origin_is_still_refused(self):
         self.assertFalse(allowed_origin("null", 8420))
+
+
+class ExportParityTests(unittest.TestCase):
+    """The downloaded report must show the same run view as the dashboard.
+
+    It used to be a separate, much poorer template - no executive strip, no
+    funnel, no timeline, different wording. Two templates describing one run is
+    two chances to disagree about it, and the one people forward to other people
+    was the worse of the pair. Both now render the same fragments; this test
+    fails if either grows a block the other lacks.
+    """
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.db_path = Path(self.directory.name) / "ares.db"
+        self.connection = sqlite3.connect(self.db_path)
+        self.addCleanup(self.connection.close)
+        initialize(self.connection)
+        self.connection.execute(
+            "INSERT INTO runs (run_id, incident_id, dataset_mode) VALUES (?, ?, ?)",
+            ("run-x", "incident-demo", "demo"),
+        )
+        self.connection.execute(
+            "INSERT INTO model_selections (run_id, edge_id, rationale, attack_technique_id)"
+            " VALUES (?, ?, ?, ?)",
+            ("run-x", "SPAWNED:1:2", "looked like the attack", "T1059"),
+        )
+        self.connection.execute(
+            "INSERT INTO edge_facts (run_id, edge_id, relation_type, occurred_at,"
+            " source_label, target_label) VALUES (?, ?, ?, ?, ?, ?)",
+            ("run-x", "SPAWNED:1:2", "SPAWNED", "2026-01-01 00:00:00", "a.exe", "b.exe"),
+        )
+        self.connection.commit()
+
+    def _pair(self):
+        from ares.dashboard import render_run_detail
+        from ares.report import build_report, render_html
+
+        report = build_report(self.connection, "run-x")
+        return render_run_detail(report), render_html(report)
+
+    def test_every_view_block_appears_in_both(self):
+        dashboard, export = self._pair()
+        for marker in (
+            '<div class="exec">',      # executive strip
+            '<div class="fr ',         # funnel rows
+            'class="beside"',          # aporia-beside-the-funnel note
+            '<div class="tlrail">',    # timeline rail
+            'panel aporia',            # aporia panel
+            'Model selections',
+            'Proven by code',
+            'SESSION ',
+        ):
+            self.assertIn(marker, dashboard, f"dashboard missing {marker}")
+            self.assertIn(marker, export, f"export missing {marker}")
+
+    def test_the_counts_shown_are_identical(self):
+        dashboard, export = self._pair()
+        for marker in ('<div class="c ', '<div class="fr ', '<span class="pt', 'class="stat '):
+            self.assertEqual(dashboard.count(marker), export.count(marker), marker)
+
+    def test_the_export_keeps_the_stricter_policy_and_no_server_links(self):
+        _, export = self._pair()
+        # It is opened from disk, long after the server has stopped.
+        self.assertIn("form-action 'none'", export)
+        self.assertNotIn('href="/run/', export)
+        self.assertNotIn('<form', export)
+
+    def test_a_stored_payload_is_inert_in_the_export_too(self):
+        payload = "<script>alert('xss')</script>"
+        self.connection.execute(
+            "UPDATE model_selections SET rationale = ? WHERE run_id = ?", (payload, "run-x")
+        )
+        self.connection.commit()
+        dashboard, export = self._pair()
+        for rendered in (dashboard, export):
+            self.assertNotIn(payload, rendered)
+            self.assertIn("&lt;script&gt;", rendered)

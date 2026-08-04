@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 
+from .dashboard_style import STYLE
 from .rendering import build_environment
+from .views import RUN_BODY
 from .scoring import score_run
 from .store import PREDICATE_BADGES, edge_facts, run_metrics, session_index
 
@@ -328,7 +330,26 @@ def render_markdown(report):
     return "\n".join(lines) + "\n"
 
 
-_HTML = """<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"{{ content_security_policy }}\">{{ CSP_META_TAG }}<title>ARES report</title><style>body{font-family:system-ui;margin:2rem;max-width:72rem}.banner,.aporia{padding:1rem;border:3px solid #7a1f1f;background:#fff0f0}.banner{border-color:#5b3c00;background:#fff6d5}.badge{font-weight:bold}</style></head><body><div class=\"banner\">Dataset mode: {{ report.dataset_mode }}{% if report.demo_notice %}. {{ report.demo_notice }}{% endif %}</div><h1>ARES report</h1><h2>Run counts</h2><ul>{% for name, value in report.counts.items() %}<li>{{ name }}: {{ value }}</li>{% endfor %}</ul>{% if report.precision_line %}<p>{{ report.precision_line }}</p><p>{{ report.coverage_line }}</p>{% endif %}<h2>Verified edges</h2><ul>{% for edge in report.verified_edges %}<li><span class=\"badge\">{{ edge.badge }}</span> {{ edge.source_event_id }} → {{ edge.target_event_id }}: {{ edge.claim_text }}</li>{% endfor %}</ul><h2>Model selections</h2><ul>{% for item in report.selections %}<li>{{ item.edge_id }}: {{ item.rationale }} (ATT&amp;CK: {{ item.attack_technique_id or 'not supplied' }})</li>{% endfor %}</ul><section class=\"aporia\"><h2>Aporias — I cannot prove this</h2><ul>{% for item in report.aporias %}<li>{{ item.claim_text }}: {{ item.failure_code }} — {{ item.failure_detail }}</li>{% endfor %}</ul></section></body></html>"""
+# The export renders the SAME body as the dashboard, from the same fragments.
+# It differs in exactly two ways, both deliberate: the stricter policy (this file
+# is opened from disk and has no forms, so form-action stays 'none'), and no
+# links back to a server that will not be running when someone opens it.
+_HTML = (
+    '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    "{{ CSP_META_TAG }}"
+    "<title>ARES session {{ report.session_number }}</title>"
+    f"<style>{STYLE}</style></head><body>"
+    '<div class="bar"><div class="in"><span class="brand">'
+    '<span>A<em>R</em>ES</span></span>'
+    '<span class="tagline">Exported report &middot; generated on the machine that ran it</span>'
+    '</div></div><main>'
+    + RUN_BODY
+    + '<p class="foot">Exported from the ARES dashboard. Every figure here was read from the '
+      'stored evidence for this session &mdash; nothing in this file was recomputed at export '
+      'time, and nothing in it can be edited into agreement with a different run.</p>'
+    '</main></body></html>'
+)
 
 
 def render_html(report):

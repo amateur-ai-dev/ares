@@ -51,6 +51,7 @@ from .jobs import (
     store_upload,
 )
 from .rendering import DASHBOARD_CONTENT_SECURITY_POLICY, build_environment
+from .views import RUN_BODY
 from .report import build_report, render_html, render_markdown
 from .store import session_index
 
@@ -98,7 +99,7 @@ _CSRF_REFUSED = "This form was not issued by this server. Reload the dashboard a
 # Two forms, both multipart, both carrying the CSRF token. There is no JavaScript
 # anywhere on this page: the CSP forbids script entirely, so every interaction is
 # a plain form POST and a redirect.
-_ACTIONS = """<p class="lab">START WORK</p><div class="act">
+_ACTIONS = r"""<p class="lab">START WORK</p><div class="act">
 <div class="panel"><div class="ph"><h2>Analyse a log</h2><span class="note">Sysmon JSON lines</span></div>
 <div class="pb"><form class="card" method="post" action="/analyze" enctype="multipart/form-data">
 <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -235,78 +236,23 @@ _DETAIL = _page("ARES run", '<body><div class="bar"><div class="in"><span class=
 # happened. All three are pure CSS and markup - the CSP forbids script outright,
 # so every bar width and marker position arrives already computed by report.py.
 
-_EXEC_STRIP = """<div class="exec">{% for cell in report.executive.cells %}<div class="c {{ cell.tone }}">
-<span class="k">{{ cell.key }}</span><span class="v">{{ cell.value }}</span><span class="n">{{ cell.note }}</span>
-</div>{% endfor %}</div>
-{% if not report.executive.scored %}<p class="withheld"><b>WITHHELD</b>{{ report.executive.reason }}</p>{% endif %}"""
+_DOWNLOADS = """<p class="lab">DOWNLOADS</p><div class="panel"><div class="pb"><div class="dl-grid">
+<a class="dl" href="/run/{{ report.run_id|url }}/report.md"><span class="ext">MD</span>
+<span><b>Markdown report</b><span>plain text &middot; diffable</span></span></a>
+<a class="dl" href="/run/{{ report.run_id|url }}/report.html"><span class="ext">HTML</span>
+<span><b>HTML report</b><span>same view &middot; opens offline</span></span></a>
+<a class="dl" href="/"><span class="ext">&larr;</span><span><b>All sessions</b>
+<span>back to index</span></span></a></div></div></div>"""
 
-_FUNNEL = """<p class="lab">HOW THE LOG NARROWED</p><div class="panel"><div class="ph"><h2>Funnel</h2>
-<span class="note">bar length is square-root scaled &middot; the counts are exact</span></div>
-<div class="funnel">{% for stage in report.funnel %}<div class="fr s-{{ stage.key }}">
-<span class="fl">{{ stage.label }}</span>
-<span class="fb"><i style="width:{{ stage.bar_width|round(2) }}%"></i></span>
-<span class="fv">{{ stage.value }}</span>
-<p class="fn">{{ stage.note }}</p>
-{% if not loop.first %}<p class="drop">&darr; kept {{ (stage.share_of_previous * 100)|round(1) }}% of the stage above</p>{% endif %}
-</div>{% endfor %}</div>
-<div class="beside"><span class="bv">{{ report.aporias|length }}</span>
-<span class="bt"><b>Aporia sits beside this funnel, not inside it.</b> These are relations the
-verifier refused to decide &mdash; they did not survive the stages above, they were never
-eligible for them. Drawing them as a sixth bar would imply otherwise.</span></div></div>"""
-
-_TIMELINE = """<p class="lab">WHEN IT HAPPENED</p><div class="panel"><div class="ph"><h2>Timeline</h2>
-<span class="note">{{ report.timeline|length }} verified relations &middot; ordered by event time</span></div>
-{% if report.timeline %}<div class="tl"><div class="tlrail">
-{% for entry in report.timeline %}<span class="pt{% if entry.attack_relevant %} hit{% endif %}{% if entry.relation_type == 'PROCESS_OPENED_CONNECTION' %} conn{% endif %}" style="left:{{ entry.offset }}%"></span>{% endfor %}
-</div><div class="tlends"><span>{{ report.timeline[0].occurred_at or 'start of log' }}</span>
-<span>{{ report.timeline[-1].occurred_at or 'end of log' }}</span></div></div>
-<div class="tllegend"><span><i></i>verified relation</span><span><i class="conn"></i>network connection</span>
-<span><i class="hit"></i>selected as attack-relevant</span></div>
-<ul class="tlist">{% for entry in report.timeline %}<li{% if entry.attack_relevant %} class="hit"{% endif %}>
-<span class="ts">{{ entry.occurred_at or 'no timestamp' }}</span><span class="mk"></span>
-<span><span class="fl2">{{ entry.source_label }}</span><span class="arrow2">&rarr;</span>{{ entry.target_label }}
-{% if entry.attack_relevant %}<b class="pick">ATTACK-RELEVANT</b>{% endif %}
-<div class="meta">{{ entry.relation_type }}</div></span></li>{% endfor %}</ul>
-{% else %}<p class="lead" style="padding:1.1rem">No verified relations carried timing information for this run.</p>{% endif %}
-</div>"""
-
-# The detail page carries its own copy of the top bar, from before there was a
-# shared one. Brought onto the same branded header rather than left as the only
-# page in the tool without a logo.
-def _splice(template, anchor, addition, *, before=False):
-    """Insert a block next to `anchor`, and refuse to do nothing.
-
-    str.replace on a missing needle is a silent no-op, and that is exactly how
-    the executive strip disappeared: renaming the detail heading removed the
-    anchor it was pinned to, the splice quietly matched nothing, and the page
-    rendered without its headline numbers while every test still passed. An
-    assertion turns that class of mistake into an import-time failure.
-    """
-    if anchor not in template:
-        raise AssertionError(
-            f"template splice anchor is gone: {anchor[:60]!r}. "
-            "Re-anchor the block rather than letting it silently drop out."
-        )
-    return template.replace(
-        anchor, (addition + anchor) if before else (anchor + addition), 1
-    )
-
-
-# Spliced rather than written inline: _DETAIL is one long single-line literal, and
-# editing multi-line blocks into it is how that literal gets broken.
-_DETAIL = _splice(
-    _DETAIL, '<span class="brand">A<em>R</em>ES</span>', "", before=True
-).replace(
-    '<span class="brand">A<em>R</em>ES</span>',
-    '<a class="brand" href="/">' + _LOGO + '<span>A<em>R</em>ES</span></a>', 1)
-_DETAIL = _splice(_DETAIL, '<h1>SESSION {{ report.session_number }}</h1>', "")
-_DETAIL = _splice(
-    _DETAIL,
-    '{{ report.incident_id }} &middot; {{ report.run_id }}</span></p>',
-    _EXEC_STRIP,
-)
-_DETAIL = _splice(
-    _DETAIL, '<div class="panel"><div class="stats">', _FUNNEL + _TIMELINE, before=True
+# Composed, not spliced. The previous version patched a long single-line literal
+# by anchor text, and when one anchor was renamed the executive strip silently
+# vanished from the page while every test still passed. There is nothing to
+# re-anchor now: the body is the same object the export renders.
+_DETAIL = _page(
+    "ARES session",
+    _BAR.replace('<span class="brand">A<em>R</em>ES</span>',
+                 '<a class="brand" href="/">' + _LOGO + '<span>A<em>R</em>ES</span></a>')
+    + _DOWNLOADS + RUN_BODY + _FOOT,
 )
 
 
