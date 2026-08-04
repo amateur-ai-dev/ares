@@ -431,7 +431,13 @@ def make_handler(db_path, workdir=None, csrf_token=None):
             self.send_header("Content-Security-Policy", DASHBOARD_CONTENT_SECURITY_POLICY)
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
-            self.send_header("Referrer-Policy", "no-referrer")
+            # NOT no-referrer. That policy also downgrades the Origin header on
+            # same-origin form POSTs to the literal `null`, so this dashboard
+            # refused its own forms as cross-origin - the check and the header
+            # were fighting each other. `same-origin` keeps the referrer (and a
+            # real Origin) for our own requests and sends nothing outbound, which
+            # is the privacy property that mattered here anyway.
+            self.send_header("Referrer-Policy", "same-origin")
             for key, value in extra:
                 self.send_header(key, value)
             self.end_headers()

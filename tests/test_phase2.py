@@ -585,3 +585,51 @@ class GithubFetchTests(unittest.TestCase):
             _GitHubOnlyRedirects().redirect_request(
                 None, None, 302, "Found", {}, "https://evil.example/payload.zip"
             )
+
+
+class ReferrerPolicyTests(unittest.TestCase):
+    """The referrer policy and the origin check must not fight each other.
+
+    `Referrer-Policy: no-referrer` does not only strip Referer - it also
+    downgrades the Origin header on same-origin form POSTs to the literal
+    string "null". With that header set, the dashboard refused its own forms as
+    cross-origin, and no amount of loosening the loopback allowlist would have
+    fixed it without also accepting genuinely opaque origins.
+    """
+
+    def test_the_policy_does_not_null_our_own_origin(self):
+        import tempfile as _tempfile
+
+        directory = _tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        db_path = Path(directory.name) / "ares.db"
+        connection = sqlite3.connect(db_path)
+        initialize(connection)
+        connection.close()
+
+        handler = make_handler(db_path, Path(directory.name) / "work", csrf_token="t")
+        client, server = socket.socketpair()
+        self.addCleanup(client.close)
+        self.addCleanup(server.close)
+        fake_server = type("Server", (), {"server_port": 8420})()
+        thread = threading.Thread(target=handler, args=(server, ("127.0.0.1", 0), fake_server))
+        thread.start()
+        client.sendall(b"GET / HTTP/1.1\r\nHost: localhost:8420\r\n\r\n")
+        client.settimeout(0.5)
+        chunks = []
+        try:
+            while True:
+                chunk = client.recv(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+        except (TimeoutError, socket.timeout):
+            pass
+        thread.join(timeout=10)
+        response = b"".join(chunks).decode("utf-8", "replace")
+
+        self.assertIn("Referrer-Policy: same-origin", response)
+        self.assertNotIn("no-referrer", response)
+
+    def test_an_opaque_origin_is_still_refused(self):
+        self.assertFalse(allowed_origin("null", 8420))
