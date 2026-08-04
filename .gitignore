@@ -18,6 +18,13 @@ data/
 data/*
 !data/demo/
 !data/demo/demo-incident.json
+
+# Runtime working directories: uploaded logs, uploaded archives, extracted
+# trees. These are whatever a user handed the dashboard, which is exactly the
+# category of file that should never be committed by accident - it is somebody
+# else's data, and three of them reached a commit before this rule existed.
+data/*/work/
+work/
 *.db
 *.sqlite
 *.sqlite3
