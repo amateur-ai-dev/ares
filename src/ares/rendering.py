@@ -45,6 +45,23 @@ CONTENT_SECURITY_POLICY = (
 CSP_META_TAG = f'<meta http-equiv="Content-Security-Policy" content="{CONTENT_SECURITY_POLICY}">'
 
 
+# The dashboard grew forms - upload a log, start an analysis, submit an archive
+# for review - and `form-action 'none'` blocks a page from submitting its own.
+# It is relaxed to 'self' for the dashboard ONLY, and nothing else moves: script
+# is still forbidden outright, so this permits the dashboard to post to itself
+# and permits no new way to run code. Exported reports keep the stricter policy,
+# because a downloaded file that can POST anywhere is a worse object to hand
+# someone than one that cannot.
+DASHBOARD_CONTENT_SECURITY_POLICY = CONTENT_SECURITY_POLICY.replace(
+    "form-action 'none'", "form-action 'self'"
+)
+
+DASHBOARD_CSP_META_TAG = (
+    '<meta http-equiv="Content-Security-Policy" '
+    f'content="{DASHBOARD_CONTENT_SECURITY_POLICY}">'
+)
+
+
 # Autoescaping is a defence for TEXT context and nothing else. A value placed in
 # an href or src is still a live URL after escaping, so `javascript:alert(1)`
 # survives it intact - the regression suite caught exactly that. Any template
@@ -117,6 +134,7 @@ def build_environment(loader=None):
     # everything a template could point at. Escaped, it rendered the policy as
     # visible gibberish AND left the page with no CSP at all.
     environment.globals["CSP_META_TAG"] = Markup(CSP_META_TAG)
+    environment.globals["DASHBOARD_CSP_META_TAG"] = Markup(DASHBOARD_CSP_META_TAG)
     environment.globals["content_security_policy"] = CONTENT_SECURITY_POLICY
     return environment
 
