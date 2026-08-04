@@ -72,6 +72,43 @@ Both diagrams fixed and PDFs regenerated. `HLD_LLD.md`, `design-spec.html` and
   build. Mismatch with `store.py` is deliberate and recorded in `DECK_COPY.md`.
 - 122 tests pass (was 109).
 
+### Second pass (2026-08-04) — Docker + dashboard analytics + logo
+
+| Item | State |
+|---|---|
+| Docker | `Dockerfile` + `docker-compose.yml`. Two services, ARES + Ollama sidecar. **Verified running.** |
+| Executive strip | Precision / selection recall / adjudication coverage / duration. Demo runs show WITHHELD, not fabricated numbers. |
+| Funnel | events → in-scope → relations → verified → attack-relevant. Aporia shown *beside* it, not as a stage. |
+| Timeline | Rail + per-entry list, verified relations in event-time order, model picks marked. |
+| Logo | Inline SVG shield in the top bar, both pages. |
+
+**New tables:** `run_metrics` (funnel, on the run so CLI runs get it too) and
+`edge_facts` (display-only; no FK on run_id, matching `verifier_executions`).
+
+**Two deliberate distortions, both labelled on the page:**
+- Funnel bars are square-root scaled — at linear scale the last bar is 1.2% wide
+  and invisible. Exact counts sit beside every bar.
+- Timeline spaces points by rank, not elapsed time — Sysmon timestamps cluster
+  inside one second during the interesting part of an attack.
+
+**Container measurements (real, not projected):**
+- `docker compose up -d --build` → both healthy. `127.0.0.1:8420:8420`, Ollama not published.
+- Incident job: 400 events → 30 edges → 4 selections, **254s**.
+- Review job: **10 findings, 9 errors, zero scanners skipped** (semgrep + gitleaks + osv all in-image).
+
+**⚠️ Containerised local inference is ~9x slower than bare metal — 254s vs 27.5s.**
+Docker on macOS gives the Ollama container no GPU access, so it is CPU-only.
+**For a live demo, run the local arm on bare metal, not in Docker.** The container
+is the right artefact for "it runs anywhere"; it is the wrong one for a timed demo.
+
+**Bugs the container surfaced in the app itself:**
+- `ARES_OLLAMA_HOST` did not exist — both the selector and the model probe had
+  `localhost` hardcoded and could not reach a sidecar.
+- "Ollama down" and "Ollama has nothing pulled" were one state, so a fresh
+  container was told to run `ollama serve` while it was already running.
+- amd64 scanner binaries passed their checksum on arm64 and then panicked at
+  runtime. Now pinned per architecture.
+
 ### Known gaps, stated plainly
 
 - **The repo is private, so the anonymous installer URL 404s.** Either make it
