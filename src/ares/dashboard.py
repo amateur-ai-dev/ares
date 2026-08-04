@@ -26,13 +26,15 @@ with a meta tag instead of polling in JavaScript.
 import hmac
 import os
 import re
+import traceback
+import uuid
 import secrets
 import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .codereview import ArchiveRejected
+from .codereview import ArchiveRejected, fetch_github_archive
 from .dashboard_style import STYLE
 from .local_models import frontier_status, local_status
 from .jobs import (
@@ -135,12 +137,17 @@ The frontier arm still works.</p>{% endif %}</div>
 <div class="panel"><div class="ph"><h2>Review code</h2><span class="note">static scan only</span></div>
 <div class="pb"><form class="card" method="post" action="/review" enctype="multipart/form-data">
 <input type="hidden" name="csrf" value="{{ csrf }}">
-<div><label for="archive">UPLOAD SOURCE ARCHIVE</label>
-<input id="archive" type="file" name="archive" accept=".zip" required></div>
+<div><label for="repo_url">GITHUB REPOSITORY URL</label>
+<input id="repo_url" type="url" name="repo_url" placeholder="https://github.com/owner/repo"
+pattern="https://(www\.)?github\.com/.+"></div>
+<p class="hint" style="margin:-.35rem 0 .1rem">or</p>
+<div><label for="archive">UPLOAD A .ZIP</label>
+<input id="archive" type="file" name="archive" accept=".zip"></div>
 <button class="ghost" type="submit">RUN CODE REVIEW</button>
-<p class="hint">Semgrep, gitleaks and osv-scanner read the files. Nothing in the archive is
-installed, built, imported or run &mdash; and archives that try to write outside the
-extraction directory are rejected whole.</p>
+<p class="hint">Semgrep, gitleaks and osv-scanner read the files. Nothing is installed, built,
+imported or run &mdash; and archives that try to write outside the extraction directory are
+rejected whole. A URL is fetched from github.com only; this box is not a general-purpose
+downloader.</p>
 </form></div></div></div>"""
 
 _JOBS = """<p class="lab">JOBS</p><div class="panel"><ul class="runs">
@@ -266,18 +273,41 @@ _TIMELINE = """<p class="lab">WHEN IT HAPPENED</p><div class="panel"><div class=
 # The detail page carries its own copy of the top bar, from before there was a
 # shared one. Brought onto the same branded header rather than left as the only
 # page in the tool without a logo.
-_DETAIL = _DETAIL.replace(
-    '<span class="brand">A<em>R</em>ES</span>',
-    '<a class="brand" href="/">' + _LOGO + '<span>A<em>R</em>ES</span></a>', 1)
+def _splice(template, anchor, addition, *, before=False):
+    """Insert a block next to `anchor`, and refuse to do nothing.
+
+    str.replace on a missing needle is a silent no-op, and that is exactly how
+    the executive strip disappeared: renaming the detail heading removed the
+    anchor it was pinned to, the splice quietly matched nothing, and the page
+    rendered without its headline numbers while every test still passed. An
+    assertion turns that class of mistake into an import-time failure.
+    """
+    if anchor not in template:
+        raise AssertionError(
+            f"template splice anchor is gone: {anchor[:60]!r}. "
+            "Re-anchor the block rather than letting it silently drop out."
+        )
+    return template.replace(
+        anchor, (addition + anchor) if before else (anchor + addition), 1
+    )
+
 
 # Spliced rather than written inline: _DETAIL is one long single-line literal, and
 # editing multi-line blocks into it is how that literal gets broken.
-_DETAIL = _DETAIL.replace(
-    '<p class="sub">{{ report.run_id }}</p>',
-    '<p class="sub">{{ report.run_id }}</p>' + _EXEC_STRIP, 1)
-_DETAIL = _DETAIL.replace(
-    '<div class="panel"><div class="stats">',
-    _FUNNEL + _TIMELINE + '<div class="panel"><div class="stats">', 1)
+_DETAIL = _splice(
+    _DETAIL, '<span class="brand">A<em>R</em>ES</span>', "", before=True
+).replace(
+    '<span class="brand">A<em>R</em>ES</span>',
+    '<a class="brand" href="/">' + _LOGO + '<span>A<em>R</em>ES</span></a>', 1)
+_DETAIL = _splice(_DETAIL, '<h1>SESSION {{ report.session_number }}</h1>', "")
+_DETAIL = _splice(
+    _DETAIL,
+    '{{ report.incident_id }} &middot; {{ report.run_id }}</span></p>',
+    _EXEC_STRIP,
+)
+_DETAIL = _splice(
+    _DETAIL, '<div class="panel"><div class="stats">', _FUNNEL + _TIMELINE, before=True
+)
 
 
 # The pipeline's stages, in order. Kept here rather than in the template so the
@@ -371,10 +401,17 @@ def make_handler(db_path, workdir=None, csrf_token=None):
     class Handler(BaseHTTPRequestHandler):
         server_version = "ares"
         sys_version = ""
+        # Browsers speak HTTP/1.1. Answering 1.0 with no Content-Length makes the
+        # end of a response "whenever the socket closes", which is fine for curl
+        # and flaky in a browser. Every response below now carries a length and
+        # closes explicitly.
+        protocol_version = "HTTP/1.1"
 
-        def _headers(self, status, content_type, extra=()):
+        def _headers(self, status, content_type, extra=(), length=0):
             self.send_response(status)
             self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(length))
+            self.send_header("Connection", "close")
             self.send_header("Content-Security-Policy", DASHBOARD_CONTENT_SECURITY_POLICY)
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
@@ -383,16 +420,27 @@ def make_handler(db_path, workdir=None, csrf_token=None):
                 self.send_header(key, value)
             self.end_headers()
 
+        def _drain_body(self, cap=MAX_UPLOAD_BYTES + (8 * 1024 * 1024)):
+            """Read and discard the request body so the client finishes sending."""
+            remaining = _positive_int(self.headers.get("Content-Length"), 0, cap) or 0
+            while remaining > 0:
+                chunk = self.rfile.read(min(remaining, 1 << 20))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+
         def _allowed_host(self):
             return allowed_host(self.headers.get("Host"), self.server.server_port)
 
         def _respond(self, status, body, content_type="text/html; charset=utf-8"):
-            self._headers(status, content_type)
-            self.wfile.write(body.encode("utf-8"))
+            payload = body.encode("utf-8")
+            self._headers(status, content_type, length=len(payload))
+            self.wfile.write(payload)
+            self.close_connection = True
 
         def _redirect(self, location):
-            self._headers(303, "text/plain; charset=utf-8", (("Location", location),))
-            self.wfile.write(b"")
+            self._headers(303, "text/plain; charset=utf-8", (("Location", location),), 0)
+            self.close_connection = True
 
         def _render_index(self, connection, status=200, error=None):
             # Newest first for the reader, but numbered by creation order, so a
@@ -461,6 +509,11 @@ def make_handler(db_path, workdir=None, csrf_token=None):
                 return None, None, "Expected a multipart form submission."
             length = _positive_int(self.headers.get("Content-Length"), 0, MAX_UPLOAD_BYTES + 4096)
             if not length:
+                # The body is still coming. Answering now and closing the socket
+                # aborts the upload mid-flight, which a browser shows as a failed
+                # navigation rather than as this message. Drain first, bounded, so
+                # a hostile Content-Length cannot make us read forever.
+                self._drain_body()
                 return None, None, (
                     f"Upload is empty or larger than the "
                     f"{MAX_UPLOAD_BYTES // (1024 * 1024)}MB limit."
@@ -500,7 +553,7 @@ def make_handler(db_path, workdir=None, csrf_token=None):
                     if path == "/analyze":
                         location = self._start_incident(connection, fields, files)
                     else:
-                        location = self._start_review(connection, files)
+                        location = self._start_review(connection, fields, files)
                 except (UploadRejected, ArchiveRejected) as rejection:
                     self._render_index(connection, 400, str(rejection))
                     return
@@ -537,9 +590,22 @@ def make_handler(db_path, workdir=None, csrf_token=None):
             start_job(db_path, job_id, stored, f"upload:{job_id}")
             return f"/job/{job_id}"
 
-        def _start_review(self, connection, files):
+        def _start_review(self, connection, fields, files):
             filename, payload = files.get("archive", ("", b""))
-            stored = store_review_upload(work_root / "archives", payload)
+            repo_url = (fields.get("repo_url") or "").strip()
+            if repo_url and not payload:
+                # Fetched under ARES's own name, not the uploader's: the label is
+                # owner/repo, and the file on disk is still a UUID we chose.
+                stored, filename = fetch_github_archive(
+                    repo_url, work_root / "archives" / f"{uuid.uuid4().hex}.zip"
+                )
+                payload = stored.read_bytes()
+            elif payload:
+                stored = store_review_upload(work_root / "archives", payload)
+            else:
+                raise UploadRejected(
+                    "Give me either a GitHub repository URL or a .zip to review."
+                )
             job_id = create_job(
                 connection,
                 kind="review",
@@ -571,7 +637,27 @@ def make_handler(db_path, workdir=None, csrf_token=None):
                 code, message = 405, "Method not allowed"
             self._respond(code, message or "Request failed", "text/plain; charset=utf-8")
 
-        def log_message(self, *_args): pass
+        def handle_one_request(self):
+            # Without this an exception mid-handler kills the worker thread and
+            # the browser gets an empty response with no explanation anywhere.
+            try:
+                super().handle_one_request()
+            except (BrokenPipeError, ConnectionResetError):
+                self.close_connection = True
+            except Exception:
+                traceback.print_exc()
+                try:
+                    self._respond(500, "Internal error - see the server log",
+                                  "text/plain; charset=utf-8")
+                except Exception:
+                    self.close_connection = True
+
+        def log_message(self, fmt, *args):
+            # Quiet by default, on with ARES_ACCESS_LOG=1. A local tool that
+            # prints every request is noise; one that can never be asked what it
+            # served is undiagnosable.
+            if os.environ.get("ARES_ACCESS_LOG"):
+                print(f"{self.address_string()} {fmt % args}", flush=True)
 
     Handler.csrf_token = token
     return Handler

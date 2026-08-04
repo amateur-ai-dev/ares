@@ -533,3 +533,45 @@ class ScoredStripTests(unittest.TestCase):
                          else captured["enumerated_edge_count"], 10)
         recall_cell = next(c for c in built.executive["cells"] if c["key"] == "SELECTION RECALL")
         self.assertEqual(recall_cell["value"], "50.0%")
+
+
+class GithubFetchTests(unittest.TestCase):
+    """The URL box is an allowlist, not a filter.
+
+    "Fetch whatever you paste" is server-side request forgery: aimed at
+    169.254.169.254 or an internal host, the dashboard becomes a proxy into
+    whatever network it runs on. Only GitHub, only HTTPS, only a repo archive.
+    """
+
+    def test_accepts_the_forms_people_actually_paste(self):
+        from ares.codereview import github_archive_url
+
+        self.assertEqual(github_archive_url("https://github.com/psf/requests"),
+                         ("psf", "requests", None))
+        self.assertEqual(github_archive_url("https://github.com/psf/requests.git"),
+                         ("psf", "requests", None))
+        self.assertEqual(github_archive_url("https://github.com/psf/requests/tree/main"),
+                         ("psf", "requests", "main"))
+
+    def test_refuses_anything_that_is_not_github_over_https(self):
+        from ares.codereview import ArchiveRejected, github_archive_url
+
+        for url in (
+            "http://github.com/a/b",                 # plaintext
+            "https://evil.example/a/b",              # another host
+            "https://169.254.169.254/a/b",           # cloud metadata
+            "http://127.0.0.1:8420/a/b",             # back at ourselves
+            "file:///etc/passwd",                    # not even http
+            "https://github.com/onlyowner",          # not a repository
+            "https://github.com.evil.example/a/b",   # suffix trick
+        ):
+            with self.assertRaises(ArchiveRejected, msg=url):
+                github_archive_url(url)
+
+    def test_a_redirect_off_github_is_refused(self):
+        from ares.codereview import ArchiveRejected, _GitHubOnlyRedirects
+
+        with self.assertRaises(ArchiveRejected):
+            _GitHubOnlyRedirects().redirect_request(
+                None, None, 302, "Found", {}, "https://evil.example/payload.zip"
+            )

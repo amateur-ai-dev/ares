@@ -25,8 +25,12 @@ promised in this docstring.
 
 import json
 import os
+import re
 import subprocess
+import urllib.error
+import urllib.request
 import zipfile
+from urllib.parse import urlsplit
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
@@ -49,6 +53,94 @@ OSV_CWE = "CWE-1395: Dependency on Vulnerable Third-Party Component"
 
 class ArchiveRejected(Exception):
     """The archive tried something an archive should never need to do."""
+
+
+# Fetching a repository by URL is the one place this tool reaches the network on
+# purpose, so the destination is an allowlist rather than a filter. A URL box
+# that will fetch "whatever you paste" is a server-side request forgery hole:
+# point it at 169.254.169.254 or an internal host and the tool becomes a proxy
+# into whatever network it is running on. Only GitHub, only HTTPS, only a
+# repository archive.
+GITHUB_HOSTS = frozenset({"github.com", "www.github.com"})
+CODELOAD_HOST = "codeload.github.com"
+REPO_SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")
+REF_SEGMENT = re.compile(r"^[A-Za-z0-9._/-]+$")
+FETCH_TIMEOUT_SECONDS = 30
+
+
+def github_archive_url(url):
+    """Turn a GitHub repository URL into its zip download, or refuse.
+
+    Accepts the forms people actually paste: the repo page, a .git clone URL,
+    and a /tree/<ref> deep link. Everything else - another host, another scheme,
+    a path that is not a repository - is refused rather than coerced.
+    """
+    parsed = urlsplit((url or "").strip())
+    if parsed.scheme != "https":
+        raise ArchiveRejected("The repository URL must start with https://")
+    if parsed.hostname not in GITHUB_HOSTS:
+        raise ArchiveRejected(
+            "Only github.com repositories can be fetched. Upload a .zip for "
+            "anything else - this box is not a general-purpose downloader."
+        )
+    parts = [segment for segment in parsed.path.split("/") if segment]
+    if len(parts) < 2:
+        raise ArchiveRejected("That URL does not name a repository (expected /owner/repo).")
+    owner, repository = parts[0], parts[1]
+    if repository.endswith(".git"):
+        repository = repository[: -len(".git")]
+    if not REPO_SEGMENT.match(owner) or not REPO_SEGMENT.match(repository):
+        raise ArchiveRejected("That owner or repository name is not a valid GitHub name.")
+    reference = None
+    if len(parts) >= 4 and parts[2] in ("tree", "commit"):
+        reference = "/".join(parts[3:])
+        if not REF_SEGMENT.match(reference):
+            raise ArchiveRejected("That branch or tag name is not valid.")
+    return owner, repository, reference
+
+
+def fetch_github_archive(url, destination):
+    """Download a GitHub repository zip to `destination`. Returns its path.
+
+    Redirects are followed only within GitHub's own hosts - urllib would
+    otherwise happily follow a redirect off to anywhere, which would give back
+    the SSRF the allowlist above exists to prevent.
+    """
+    owner, repository, reference = github_archive_url(url)
+    references = [reference] if reference else ["HEAD", "refs/heads/main", "refs/heads/master"]
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    opener = urllib.request.build_opener(_GitHubOnlyRedirects())
+    last_error = None
+    for candidate in references:
+        target = f"https://{CODELOAD_HOST}/{owner}/{repository}/zip/{candidate}"
+        try:
+            with opener.open(target, timeout=FETCH_TIMEOUT_SECONDS) as response:
+                payload = response.read(MAX_ARCHIVE_BYTES + 1)
+        except urllib.error.HTTPError as failure:
+            last_error = f"GitHub returned {failure.code} for {candidate}"
+            continue
+        except (urllib.error.URLError, TimeoutError, OSError) as failure:
+            raise ArchiveRejected(f"Could not reach GitHub: {failure}") from failure
+        if len(payload) > MAX_ARCHIVE_BYTES:
+            raise ArchiveRejected(
+                f"That repository is larger than the "
+                f"{MAX_ARCHIVE_BYTES // (1024 * 1024)}MB limit."
+            )
+        if not payload.startswith(b"PK"):
+            raise ArchiveRejected("GitHub did not return a zip archive.")
+        destination.write_bytes(payload)
+        return destination, f"{owner}/{repository}" + (f"@{candidate}" if reference else "")
+    raise ArchiveRejected(
+        last_error or "That repository could not be downloaded. Is it public?"
+    )
+
+
+class _GitHubOnlyRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, message, headers, newurl):
+        if urlsplit(newurl).hostname not in GITHUB_HOSTS | {CODELOAD_HOST}:
+            raise ArchiveRejected(f"Refusing a redirect off GitHub to {newurl!r}")
+        return super().redirect_request(request, fp, code, message, headers, newurl)
 
 
 @dataclass(frozen=True)
