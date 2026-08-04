@@ -12,7 +12,12 @@ OLLAMA_URL = "http://localhost:11434/api/chat"
 # Foundation-Sec-8B-Reasoning proved unusable for structured extraction here: it
 # narrates every event in its thinking channel and returns empty content. Swapped
 # under deadline, recorded as a deviation from MASTER_PLAN section 5.
-OLLAMA_MODEL = "granite4:3b"
+#
+# The default is the model the published local-arm result was measured with. It
+# used to be granite4:3b, which meant a default `--arm local` run did NOT
+# reproduce the number in the paper unless the operator knew to pass --model.
+# A default that silently disagrees with the published figure is a trap.
+OLLAMA_MODEL = "qwen2.5:7b-instruct"
 CODEX_COMPANION = "/Users/nithingowda/.claude/plugins/cache/openai-codex/codex/1.0.6/scripts/codex-companion.mjs"
 SUPPORTED_RELATIONS = frozenset({SPAWNED, PROCESS_OPENED_CONNECTION})
 

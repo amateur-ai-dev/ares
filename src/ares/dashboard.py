@@ -33,6 +33,7 @@ from urllib.parse import urlsplit
 
 from .codereview import ArchiveRejected
 from .dashboard_style import STYLE
+from .local_models import local_status
 from .jobs import (
     MAX_UPLOAD_BYTES,
     UploadRejected,
@@ -96,12 +97,23 @@ _ACTIONS = """<p class="lab">START WORK</p><div class="act">
 <div><label for="logfile">UPLOAD LOG FILE</label>
 <input id="logfile" type="file" name="logfile" accept=".json,.jsonl,.log,.txt" required></div>
 <div class="two">
-<div><label for="arm">SELECTOR</label><select id="arm" name="arm">
-<option value="local">local model</option><option value="frontier">frontier (test arm)</option>
+<div><label for="arm">SELECTOR ARM</label><select id="arm" name="arm">
+<option value="local">local &mdash; on this machine</option>
+<option value="frontier">frontier &mdash; test arm, leaves the machine</option>
 </select></div>
 <div><label for="mode">DATASET MODE</label><select id="mode" name="mode">
 <option value="demo">demo &mdash; no scoring</option><option value="eval">eval</option>
 </select></div></div>
+<div><label for="model">LOCAL MODEL{% if not local.reachable %} &mdash; UNAVAILABLE{% endif %}</label>
+<select id="model" name="model"{% if not local.reachable %} disabled{% endif %}>
+{% for name in local.models %}<option value="{{ name }}">{{ name }}{% if name == local.preferred %} &nbsp;&middot; measured in the paper{% endif %}</option>
+{% else %}<option value="">no local model available</option>{% endfor %}
+</select>
+{% if local.reachable %}<p class="hint">Applies to the local arm only. The frontier arm ignores it.
+{% if not local.preferred_present %}<br><b>{{ local.preferred }}</b> is not pulled &mdash; the published
+local result was measured with it. <code>ollama pull {{ local.preferred }}</code>{% endif %}</p>
+{% else %}<p class="hint">{{ local.error }}<br>Start it with <code>ollama serve</code>, then reload this page.
+The frontier arm still works.</p>{% endif %}</div>
 <div class="two">
 <div><label for="top_n">EDGES SHOWN</label>
 <input id="top_n" type="number" name="top_n" value="300" min="1" max="20000"></div>
@@ -303,9 +315,12 @@ def make_handler(db_path, workdir=None, csrf_token=None):
                     "SELECT run_id, incident_id, dataset_mode FROM runs ORDER BY created_at DESC"
                 )
             ]
+            # Probed on every render rather than cached at startup: the operator
+            # starts and stops Ollama independently of this process, so a cached
+            # answer would be confidently wrong exactly when it matters.
             self._respond(status, build_environment().from_string(_INDEX).render(
                 runs=runs, jobs=list_jobs(connection), csrf=token, error=error,
-                max_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
+                max_mb=MAX_UPLOAD_BYTES // (1024 * 1024), local=local_status(),
             ))
 
         def do_GET(self):
@@ -405,6 +420,12 @@ def make_handler(db_path, workdir=None, csrf_token=None):
             # being loosened to accept an unlabelled path.
             stored = store_upload(work_root / "uploads" / mode, filename, payload)
             arm = fields.get("arm") if fields.get("arm") in ("local", "frontier") else "local"
+            # Validated against what Ollama actually reports rather than trusted
+            # from the form: the field is a request, and an unknown value would
+            # otherwise surface as a model call failing minutes into the run.
+            model = fields.get("model") or None
+            if arm != "local" or model not in local_status()["models"]:
+                model = None
             job_id = create_job(
                 connection,
                 label=safe_label(filename),
@@ -412,7 +433,7 @@ def make_handler(db_path, workdir=None, csrf_token=None):
                 source_sha256=sha256_of(payload),
                 source_bytes=len(payload),
                 arm=arm,
-                model=None,
+                model=model,
                 top_n=_positive_int(fields.get("top_n"), 300),
                 batch_size=_positive_int(fields.get("batch_size"), None, 5000),
                 dataset_mode=mode,
