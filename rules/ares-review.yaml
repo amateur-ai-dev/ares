@@ -1,0 +1,135 @@
+# Offline Semgrep ruleset for the ARES code-review add-on.
+#
+# Bundled deliberately rather than using `--config=auto`, which downloads its
+# rules at scan time. A security tool that reaches out to the network to decide
+# what counts as a vulnerability cannot honestly be called locally hosted, and it
+# fails closed in exactly the environment this tool is built for - an air-gapped
+# analyst machine.
+#
+# Every rule carries an explicit CWE in its metadata. The reviewer surfaces that
+# CWE with the finding, so a result is traceable to a public weakness class
+# rather than to this file's private opinion.
+rules:
+  - id: ares-eval-of-dynamic-value
+    languages: [python]
+    severity: ERROR
+    message: >-
+      eval()/exec() on a value that is not a literal. If any part of it is
+      attacker-influenced this is direct code execution.
+    metadata:
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: exec(...)
+      - pattern-not: eval("...")
+      - pattern-not: exec("...")
+
+  - id: ares-subprocess-shell-true
+    languages: [python]
+    severity: ERROR
+    message: >-
+      subprocess called with shell=True. The arguments are parsed by a shell, so
+      any interpolated value becomes command injection.
+    metadata:
+      cwe: "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+    pattern-either:
+      - pattern: subprocess.run(..., shell=True, ...)
+      - pattern: subprocess.Popen(..., shell=True, ...)
+      - pattern: subprocess.call(..., shell=True, ...)
+      - pattern: subprocess.check_output(..., shell=True, ...)
+      - pattern: os.system(...)
+
+  - id: ares-sql-string-building
+    languages: [python]
+    severity: ERROR
+    message: >-
+      SQL assembled by string formatting. Use parameter binding; the driver is
+      the only thing that can escape a value correctly for its own dialect.
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+    pattern-either:
+      - pattern: $CURSOR.execute("..." % ...)
+      - pattern: $CURSOR.execute("..." + ...)
+      - pattern: $CURSOR.execute(f"...")
+      - pattern: $CURSOR.execute("...".format(...))
+
+  - id: ares-hardcoded-credential
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Credential assigned from a string literal in source. Anything in the repo
+      is readable by everyone who can read the repo, including its history.
+    metadata:
+      cwe: "CWE-798: Use of Hard-coded Credentials"
+    pattern-either:
+      - pattern: password = "..."
+      - pattern: passwd = "..."
+      - pattern: secret = "..."
+      - pattern: api_key = "..."
+      - pattern: apikey = "..."
+      - pattern: token = "..."
+      - pattern: aws_secret_access_key = "..."
+
+  - id: ares-insecure-hash
+    languages: [python]
+    severity: WARNING
+    message: >-
+      MD5/SHA-1 used. Both are broken for any security purpose; use SHA-256 or
+      better, and a password KDF for passwords.
+    metadata:
+      cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
+    pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: hashlib.sha1(...)
+
+  - id: ares-unsafe-deserialization
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Deserializing untrusted data with a loader that can construct arbitrary
+      objects. pickle and yaml.load are code execution, not data parsing.
+    metadata:
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+    pattern-either:
+      - pattern: pickle.load(...)
+      - pattern: pickle.loads(...)
+      - pattern: yaml.load($X)
+      - pattern: marshal.loads(...)
+
+  - id: ares-tls-verification-disabled
+    languages: [python]
+    severity: ERROR
+    message: >-
+      TLS certificate verification disabled. The connection is encrypted but
+      unauthenticated, which defeats the point against an active attacker.
+    metadata:
+      cwe: "CWE-295: Improper Certificate Validation"
+    pattern-either:
+      - pattern: requests.$METHOD(..., verify=False, ...)
+      - pattern: ssl._create_unverified_context(...)
+
+  - id: ares-jinja-autoescape-off
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Jinja environment built without autoescaping. Every value rendered into
+      HTML by this environment is a potential injection point.
+    metadata:
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation"
+    pattern-either:
+      - pattern: jinja2.Environment(...)
+      - pattern: Environment(...)
+    pattern-not: Environment(..., autoescape=$X, ...)
+
+  - id: ares-tempfile-predictable
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Predictable temporary path. A local attacker can pre-create or symlink it
+      between the check and the write.
+    metadata:
+      cwe: "CWE-377: Insecure Temporary File"
+    pattern-either:
+      - pattern: tempfile.mktemp(...)
+      - pattern: open("/tmp/...", ...)
