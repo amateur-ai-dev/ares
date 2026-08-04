@@ -319,10 +319,16 @@ def record_proposal(connection, incident_id, proposal, events_by_line, run_id):
     return outcome
 
 
-def verify_candidate_edges(connection, incident_id, edges, run_id):
+def verify_candidate_edges(connection, incident_id, edges, run_id, report_progress=None):
     """Persist every enumerated edge through the existing predicate/store route."""
     verified = []
-    for edge in edges:
+    edges = list(edges)
+    total = len(edges)
+    for index, edge in enumerate(edges, start=1):
+        # Every 50, not every edge: the UI refreshes every four seconds, so a
+        # write per edge would be pure contention for a number nobody reads.
+        if report_progress and (index % 50 == 0 or index == total):
+            report_progress("verifying relations", index, total)
         proposal = ProposedEdge(
             edge.source_event_id,
             edge.target_event_id,
@@ -411,6 +417,7 @@ def run_incident(
     top_n=300,
     batch_size=None,
     dataset_mode=None,
+    on_progress=None,
 ):
     """Enumerate/verify facts, then ask one model batch to select attack edges."""
     del key_path
@@ -423,6 +430,8 @@ def run_incident(
         raise ValueError(
             f"dataset mode mismatch: requested {dataset_mode!r}, log is {inferred_mode!r}"
         )
+    report_progress = on_progress or (lambda *_args, **_kwargs: None)
+    report_progress("reading the log", 0, 0)
     all_events = load_events(log_path)
     events = [
         candidate
@@ -433,8 +442,13 @@ def run_incident(
     ]
     run_id = run_id or f"{arm}-{uuid.uuid4().hex}"
     record_run(connection, run_id, incident_id, inferred_mode)
+    # No total: enumeration is one fast pass, and reporting events-in-scope over
+    # events-read would render a scoping RATIO as if it were completion.
+    report_progress("finding candidate relations", 0, 0)
     enumerated = enumerate_candidate_edges(events)
-    persisted = verify_candidate_edges(connection, incident_id, enumerated, run_id)
+    persisted = verify_candidate_edges(
+        connection, incident_id, enumerated, run_id, report_progress,
+    )
     demo_aporia_outcomes = (
         record_demo_orphan_connections(connection, incident_id, events, run_id)
         if inferred_mode == "demo"
@@ -459,9 +473,11 @@ def run_incident(
     connection.commit()
 
     if not verified or limit_chunks == 0:
+        report_progress("done", 0, 0)
         record_run_metrics(connection, run_id, counts)
         connection.commit()
         return counts
+    report_progress("ranking by suspicion", 0, 0)
     shown = prioritise_edges(verified, all_events)[:top_n]
     allowed_edge_ids = {item.edge.edge_id for item in shown}
     # One call per batch. A 7B asked to select from 300 edges at once returns a
@@ -478,6 +494,10 @@ def run_incident(
     selections = []
     discarded = 0
     for number, group in enumerate(groups, start=1):
+        # A single un-batched call has no sub-progress to report. Claiming 0% for
+        # the whole of the longest phase reads as stuck; an indeterminate sweep
+        # says "working, duration unknown", which is the truth.
+        report_progress("asking the model", number - 1, len(groups) if len(groups) > 1 else 0)
         group_ids = {item.edge.edge_id for item in group}
         prompt = render_prompt([render_verified_edge(item.edge) for item in group])
         if select_batch is None:
@@ -517,6 +537,7 @@ def run_incident(
         selected_edge_ids=selected_edge_ids,
         discarded_as_malformed=discarded,
     )
+    report_progress("done", len(groups), len(groups))
     record_run_metrics(connection, run_id, counts)
     connection.commit()
     return counts

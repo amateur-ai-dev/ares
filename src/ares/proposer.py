@@ -2,6 +2,8 @@
 
 import json
 import os
+import shutil
+from pathlib import Path
 import subprocess
 import urllib.request
 from dataclasses import dataclass
@@ -22,7 +24,27 @@ OLLAMA_URL = f"{OLLAMA_HOST}/api/chat"
 # reproduce the number in the paper unless the operator knew to pass --model.
 # A default that silently disagrees with the published figure is a trap.
 OLLAMA_MODEL = "qwen2.5:7b-instruct"
-CODEX_COMPANION = "/Users/nithingowda/.claude/plugins/cache/openai-codex/codex/1.0.6/scripts/codex-companion.mjs"
+# The frontier arm shells out to the Codex companion script. The path used to be
+# a hardcoded absolute path to one developer's plugin cache, which meant the
+# frontier arm worked on exactly one machine and failed everywhere else with a
+# bare FileNotFoundError. Resolution order: explicit override, then whichever
+# version is actually installed, newest first.
+CODEX_COMPANION_ENV = "ARES_CODEX_COMPANION"
+CODEX_PLUGIN_GLOB = ".claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs"
+FRONTIER_MODEL = os.environ.get("ARES_FRONTIER_MODEL", "gpt-5.6-terra")
+FRONTIER_EFFORT = os.environ.get("ARES_FRONTIER_EFFORT", "low")
+
+
+def find_codex_companion():
+    """Return the companion script path, or None if this machine has no Codex."""
+    override = os.environ.get(CODEX_COMPANION_ENV)
+    if override:
+        return override if Path(override).is_file() else None
+    candidates = sorted(Path.home().glob(CODEX_PLUGIN_GLOB), reverse=True)
+    return str(candidates[0]) if candidates else None
+
+
+CODEX_COMPANION = find_codex_companion()
 SUPPORTED_RELATIONS = frozenset({SPAWNED, PROCESS_OPENED_CONNECTION})
 
 
@@ -321,15 +343,27 @@ def _ollama_response(prompt, seed, model=None, schema=PROPOSAL_SCHEMA):
 
 
 def _frontier_response(prompt):
+    companion = find_codex_companion()
+    if not companion:
+        raise RuntimeError(
+            "The frontier arm needs the Codex companion script, which is not "
+            f"installed here. Set {CODEX_COMPANION_ENV} to its path, or use the "
+            "local arm - which is the one this project is actually about."
+        )
+    if not shutil.which("node"):
+        raise RuntimeError(
+            "The frontier arm needs Node.js, which is not on PATH. This is why "
+            "it does not work in the container. Use the local arm there."
+        )
     completed = subprocess.run(
         [
             "node",
-            CODEX_COMPANION,
+            companion,
             "task",
             "--model",
-            "gpt-5.6-terra",
+            FRONTIER_MODEL,
             "--effort",
-            "low",
+            FRONTIER_EFFORT,
             prompt,
         ],
         check=False,

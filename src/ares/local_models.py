@@ -83,3 +83,29 @@ def local_status(url=OLLAMA_TAGS_URL, timeout=PROBE_TIMEOUT_SECONDS):
         "preferred_present": PREFERRED_LOCAL_MODEL in models,
         "preferred": PREFERRED_LOCAL_MODEL,
     }
+
+
+def frontier_status():
+    """Whether the frontier arm can actually run here.
+
+    Reported the same way the local model is: as a value the page can render,
+    not as an exception thrown after the operator has already submitted a job.
+    """
+    import shutil
+
+    from .proposer import CODEX_COMPANION_ENV, FRONTIER_MODEL, find_codex_companion
+
+    companion = find_codex_companion()
+    node = shutil.which("node")
+    if companion and node:
+        return {"available": True, "model": FRONTIER_MODEL, "reason": None}
+    missing = "Node.js" if companion else "the Codex companion script"
+    return {
+        "available": False,
+        "model": FRONTIER_MODEL,
+        "reason": (
+            f"Unavailable here: {missing} was not found. "
+            f"Set {CODEX_COMPANION_ENV} if it is installed elsewhere. "
+            "This is expected inside the container."
+        ),
+    }

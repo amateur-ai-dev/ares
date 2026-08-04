@@ -34,7 +34,7 @@ from urllib.parse import urlsplit
 
 from .codereview import ArchiveRejected
 from .dashboard_style import STYLE
-from .local_models import local_status
+from .local_models import frontier_status, local_status
 from .jobs import (
     MAX_UPLOAD_BYTES,
     UploadRejected,
@@ -50,6 +50,7 @@ from .jobs import (
 )
 from .rendering import DASHBOARD_CONTENT_SECURITY_POLICY, build_environment
 from .report import build_report, render_html, render_markdown
+from .store import session_index
 
 
 def _page(title, body, refresh=False):
@@ -103,9 +104,9 @@ _ACTIONS = """<p class="lab">START WORK</p><div class="act">
 <input id="logfile" type="file" name="logfile" accept=".json,.jsonl,.log,.txt" required></div>
 <div class="two">
 <div><label for="arm">SELECTOR ARM</label><select id="arm" name="arm">
-<option value="local">local &mdash; on this machine</option>
-<option value="frontier">frontier &mdash; test arm, leaves the machine</option>
-</select></div>
+<option value="frontier"{% if frontier.available %} selected{% endif %}>frontier ({{ frontier.model }}) &mdash; fastest</option>
+<option value="local"{% if not frontier.available %} selected{% endif %}>local &mdash; nothing leaves this machine</option>
+</select>{% if not frontier.available %}<p class="hint">{{ frontier.reason }}</p>{% endif %}</div>
 <div><label for="mode">DATASET MODE</label><select id="mode" name="mode">
 <option value="demo">demo &mdash; no scoring</option><option value="eval">eval</option>
 </select></div></div>
@@ -145,14 +146,14 @@ extraction directory are rejected whole.</p>
 _JOBS = """<p class="lab">JOBS</p><div class="panel"><ul class="runs">
 {% for job in jobs %}<li><a class="row" href="/job/{{ job.job_id|url }}">
 <span class="st {{ job.status }}">{{ job.status|upper }}</span>
-<span><b>{{ job.label }}</b><div class="id">{{ job.kind }} &middot; {{ job.source_kb }} KB &middot;
+<span><b>{{ job.label }}</b>{% if job.status == 'running' and job.progress.stage %}<span class="jobpct">{{ job.progress.stage }}{% if job.progress.percent is not none %} {{ job.progress.percent }}%{% endif %}</span>{% endif %}<div class="id">{{ job.kind }} &middot; {{ job.source_kb }} KB &middot;
 {% if job.duration_ms %}{{ "%.1f"|format(job.duration_seconds) }}s{% else %}&mdash;{% endif %}
 &middot; {{ job.created_at }}</div></span>
 <span class="arrow">&rarr;</span></a></li>
 {% else %}<li style="padding:1.1rem" class="empty">No jobs yet. Upload a log above.</li>{% endfor %}
 </ul></div>"""
 
-_INDEX = _page("ARES", _BAR + _ERROR + _ACTIONS + _JOBS + """<p class="lab">WHAT THE BADGES MEAN</p><div class="panel"><div class="thesis"><div class="th"><span class="k v"><i></i>VERIFIED</span><p>Deterministic code checked it. No model involved. Same answer every time.</p></div><div class="th"><span class="k r"><i></i>REFUTED</span><p>Checked, and the evidence contradicts it.</p></div><div class="th"><span class="k a"><i></i>APORIA</span><p>Cannot be determined from this evidence. The tool says so instead of guessing.</p></div></div></div><p class="lab">RUNS</p><div class="panel"><ul class="runs">{% for run in runs %}<li><a class="row" href="/run/{{ run.run_id|url }}"><span class="chip {{ run.dataset_mode }}">{{ run.dataset_mode|upper }}</span><span><b>{{ run.incident_id }}</b><div class="id">{{ run.run_id }}</div></span><span class="arrow">&rarr;</span></a></li>{% else %}<li style="padding:1.1rem" class="empty">No runs yet.</li>{% endfor %}</ul></div><p class="lab">REPORTS</p><div class="panel"><div class="pb"><div class="dl-grid">{% for run in runs %}<a class="dl" href="/run/{{ run.run_id|url }}/report.md"><span class="ext">MD</span><span><b>{{ run.incident_id }}</b><span>markdown &middot; {{ run.dataset_mode }}</span></span></a><a class="dl" href="/run/{{ run.run_id|url }}/report.html"><span class="ext">HTML</span><span><b>{{ run.incident_id }}</b><span>html &middot; {{ run.dataset_mode }}</span></span></a>{% else %}<p class="empty">No reports yet.</p>{% endfor %}</div></div></div>""" + _FOOT)
+_INDEX = _page("ARES", _BAR + _ERROR + _ACTIONS + _JOBS + """<p class="lab">WHAT THE BADGES MEAN</p><div class="panel"><div class="thesis"><div class="th"><span class="k v"><i></i>VERIFIED</span><p>Deterministic code checked it. No model involved. Same answer every time.</p></div><div class="th"><span class="k r"><i></i>REFUTED</span><p>Checked, and the evidence contradicts it.</p></div><div class="th"><span class="k a"><i></i>APORIA</span><p>Cannot be determined from this evidence. The tool says so instead of guessing.</p></div></div></div><p class="lab">RUNS</p><div class="panel"><ul class="runs">{% for run in runs %}<li><a class="row" href="/run/{{ run.run_id|url }}"><span class="chip {{ run.dataset_mode }}">{{ run.dataset_mode|upper }}</span><span><b>SESSION {{ run.session }}</b><div class="id">{{ run.created_at }}</div></span><span class="arrow">&rarr;</span></a></li>{% else %}<li style="padding:1.1rem" class="empty">No runs yet.</li>{% endfor %}</ul></div><p class="lab">REPORTS</p><div class="panel"><div class="pb"><div class="dl-grid">{% for run in runs %}<a class="dl" href="/run/{{ run.run_id|url }}/report.md"><span class="ext">MD</span><span><b>SESSION {{ run.session }}</b><span>markdown &middot; {{ run.dataset_mode }}</span></span></a><a class="dl" href="/run/{{ run.run_id|url }}/report.html"><span class="ext">HTML</span><span><b>SESSION {{ run.session }}</b><span>html &middot; {{ run.dataset_mode }}</span></span></a>{% else %}<p class="empty">No reports yet.</p>{% endfor %}</div></div></div>""" + _FOOT)
 
 
 _METRIC_ROWS = """<div class="panel"><div class="ph"><h2>Run metrics</h2>
@@ -184,8 +185,15 @@ _JOB_BODY = (_BAR + """
 <li><span>Status<div class="meta">{{ job.status }}{% if job.finished_at %} &middot; finished {{ job.finished_at }}{% endif %}</div></span></li>
 </ul></div>
 {% if job.status == 'running' or job.status == 'queued' %}
-<div class="mode demo"><div><b>WORKING</b>This page refreshes itself every 4 seconds. Selection can take
-minutes on a local model &mdash; the run continues even if you close this tab.</div></div>
+<div class="prog"><div class="top">
+<span class="stage">{{ job.progress.stage or 'starting' }}</span>
+{% if job.progress.percent is not none %}<span class="count">{{ job.progress.done }} / {{ job.progress.total }}
+&middot; {{ job.progress.percent }}%</span>{% endif %}</div>
+<div class="track"><span class="fill{% if job.progress.percent is none %} unknown{% endif %}"
+{% if job.progress.percent is not none %}style="width:{{ job.progress.percent }}%"{% endif %}></span></div>
+<div class="steps">{% for step in job_steps %}<span class="step{% if step == job.progress.stage %} on{% elif loop.index0 < job_step_index %} past{% endif %}">{{ step }}</span>{% endfor %}</div>
+<p class="note">This page refreshes itself every 4 seconds. Selection can take minutes on a local
+model &mdash; the run continues even if you close this tab.</p></div>
 {% endif %}
 {% if job.error %}<div class="err"><b>Job failed.</b><br>{{ job.error }}</div>{% endif %}
 {% if job.status == 'complete' and job.kind == 'incident' %}""" + _METRIC_ROWS + """
@@ -212,7 +220,7 @@ _JOB = _page("ARES job", _JOB_BODY)
 _JOB_RUNNING = _page("ARES job", _JOB_BODY, refresh=True)
 
 
-_DETAIL = _page("ARES run", '<body><div class="bar"><div class="in"><span class="brand">A<em>R</em>ES</span><span class="tagline">Local incident analysis &middot; nothing leaves this machine</span><span class="dot"><i></i>LOCALHOST</span></div></div><main><p class="lab">DOWNLOADS</p><div class="panel"><div class="pb"><div class="dl-grid"><a class="dl" href="/run/{{ report.run_id|url }}/report.md"><span class="ext">MD</span><span><b>Markdown report</b><span>plain text &middot; diffable</span></span></a><a class="dl" href="/run/{{ report.run_id|url }}/report.html"><span class="ext">HTML</span><span><b>HTML report</b><span>self-contained &middot; offline</span></span></a><a class="dl" href="/"><span class="ext">&larr;</span><span><b>All runs</b><span>back to index</span></span></a></div></div></div><div class="mode {{ report.dataset_mode }}"><div><b>{{ report.dataset_mode }} DATASET</b>{% if report.demo_notice %}{{ report.demo_notice }}{% else %}Accuracy is measured against the frozen answer key for this corpus.{% endif %}</div></div><h1>{{ report.incident_id }}</h1><p class="sub">{{ report.run_id }}</p><div class="panel"><div class="stats"><div class="stat v1"><span class="v">{{ report.verified_edges|length }}</span><span class="k">VERIFIED</span></div><div class="stat v2"><span class="v">{{ report.selections|length }}</span><span class="k">SELECTED BY MODEL</span></div><div class="stat v3"><span class="v">{{ report.aporias|length }}</span><span class="k">APORIA</span></div></div></div>{% if report.precision_line %}<div class="panel"><div class="ph"><h2>Scored</h2></div><div class="prec"><p class="p1">{{ report.precision_line }}</p><p class="p2">{{ report.coverage_line }}</p></div></div>{% endif %}<div class="panel aporia"><div class="ph"><h2>Aporia &mdash; cannot be proven</h2><span class="note">shown, never hidden</span></div><p class="lead" style="padding-top:1rem">The evidence does not support a conclusion here. The tool refuses to guess.</p><ul class="rows">{% for item in report.aporias %}<li><span>{{ item.claim_text }}<div class="meta">{{ item.failure_code }}{% if item.failure_detail %} &middot; {{ item.failure_detail }}{% endif %}</div></span></li>{% else %}<li class="empty">None in this run.</li>{% endfor %}</ul></div><div class="panel"><div class="ph"><h2>Model selections</h2><span class="note">interpretation &middot; never badged</span></div><ul class="rows">{% for item in report.selections %}<li><span class="tag s">PICK</span><span>{{ item.rationale }}<div class="meta">{{ item.edge_id }} &middot; ATT&amp;CK {{ item.attack_technique_id or "not supplied" }}</div></span></li>{% else %}<li class="empty">The model selected nothing in this run.</li>{% endfor %}</ul></div><div class="panel"><div class="ph"><h2>Proven by code</h2><span class="note">independent of the model</span></div><ul class="rows">{% for edge in report.verified_edges %}<li><span class="tag v">{{ edge.badge }}</span><span>{{ edge.claim_text }}</span></li>{% else %}<li class="empty">No verified edges.</li>{% endfor %}</ul></div></main></body></html>')
+_DETAIL = _page("ARES run", '<body><div class="bar"><div class="in"><span class="brand">A<em>R</em>ES</span><span class="tagline">Local incident analysis &middot; nothing leaves this machine</span><span class="dot"><i></i>LOCALHOST</span></div></div><main><p class="lab">DOWNLOADS</p><div class="panel"><div class="pb"><div class="dl-grid"><a class="dl" href="/run/{{ report.run_id|url }}/report.md"><span class="ext">MD</span><span><b>Markdown report</b><span>plain text &middot; diffable</span></span></a><a class="dl" href="/run/{{ report.run_id|url }}/report.html"><span class="ext">HTML</span><span><b>HTML report</b><span>self-contained &middot; offline</span></span></a><a class="dl" href="/"><span class="ext">&larr;</span><span><b>All runs</b><span>back to index</span></span></a></div></div></div><div class="mode {{ report.dataset_mode }}"><div><b>{{ report.dataset_mode }} DATASET</b>{% if report.demo_notice %}{{ report.demo_notice }}{% else %}Accuracy is measured against the frozen answer key for this corpus.{% endif %}</div></div><h1>SESSION {{ report.session_number }}</h1><p class="sub">{{ report.created_at }}<br><span style="opacity:.72">{{ report.incident_id }} &middot; {{ report.run_id }}</span></p><div class="panel"><div class="stats"><div class="stat v1"><span class="v">{{ report.verified_edges|length }}</span><span class="k">VERIFIED</span></div><div class="stat v2"><span class="v">{{ report.selections|length }}</span><span class="k">SELECTED BY MODEL</span></div><div class="stat v3"><span class="v">{{ report.aporias|length }}</span><span class="k">APORIA</span></div></div></div>{% if report.precision_line %}<div class="panel"><div class="ph"><h2>Scored</h2></div><div class="prec"><p class="p1">{{ report.precision_line }}</p><p class="p2">{{ report.coverage_line }}</p></div></div>{% endif %}<div class="panel aporia"><div class="ph"><h2>Aporia &mdash; cannot be proven</h2><span class="note">shown, never hidden</span></div><p class="lead" style="padding-top:1rem">The evidence does not support a conclusion here. The tool refuses to guess.</p><ul class="rows">{% for item in report.aporias %}<li><span>{{ item.claim_text }}<div class="meta">{{ item.failure_code }}{% if item.failure_detail %} &middot; {{ item.failure_detail }}{% endif %}</div></span></li>{% else %}<li class="empty">None in this run.</li>{% endfor %}</ul></div><div class="panel"><div class="ph"><h2>Model selections</h2><span class="note">interpretation &middot; never badged</span></div><ul class="rows">{% for item in report.selections %}<li><span class="tag s">PICK</span><span>{{ item.rationale }}<div class="meta">{{ item.edge_id }} &middot; ATT&amp;CK {{ item.attack_technique_id or "not supplied" }}</div></span></li>{% else %}<li class="empty">The model selected nothing in this run.</li>{% endfor %}</ul></div><div class="panel"><div class="ph"><h2>Proven by code</h2><span class="note">independent of the model</span></div><ul class="rows">{% for edge in report.verified_edges %}<li><span class="tag v">{{ edge.badge }}</span><span>{{ edge.claim_text }}</span></li>{% else %}<li class="empty">No verified edges.</li>{% endfor %}</ul></div></main></body></html>')
 
 
 # The three views the detail page opens with, in the order a reviewer reads them:
@@ -270,6 +278,18 @@ _DETAIL = _DETAIL.replace(
 _DETAIL = _DETAIL.replace(
     '<div class="panel"><div class="stats">',
     _FUNNEL + _TIMELINE + '<div class="panel"><div class="stats">', 1)
+
+
+# The pipeline's stages, in order. Kept here rather than in the template so the
+# "already passed this" styling is computed once instead of guessed per step.
+JOB_STEPS = (
+    "reading the log",
+    "finding candidate relations",
+    "verifying relations",
+    "ranking by suspicion",
+    "asking the model",
+    "done",
+)
 
 
 def allowed_host(host, port):
@@ -375,18 +395,24 @@ def make_handler(db_path, workdir=None, csrf_token=None):
             self.wfile.write(b"")
 
         def _render_index(self, connection, status=200, error=None):
-            runs = [
-                dict(zip(("run_id", "incident_id", "dataset_mode"), row))
-                for row in connection.execute(
-                    "SELECT run_id, incident_id, dataset_mode FROM runs ORDER BY created_at DESC"
-                )
-            ]
+            # Newest first for the reader, but numbered by creation order, so a
+            # session keeps its number when the next run lands above it.
+            sessions = session_index(connection)
+            runs = []
+            for row in connection.execute(
+                "SELECT run_id, incident_id, dataset_mode, created_at"
+                " FROM runs ORDER BY created_at DESC, rowid DESC"
+            ):
+                run = dict(zip(("run_id", "incident_id", "dataset_mode", "created_at"), row))
+                run["session"] = sessions.get(run["run_id"], {}).get("number", "--")
+                runs.append(run)
             # Probed on every render rather than cached at startup: the operator
             # starts and stops Ollama independently of this process, so a cached
             # answer would be confidently wrong exactly when it matters.
             self._respond(status, build_environment().from_string(_INDEX).render(
                 runs=runs, jobs=list_jobs(connection), csrf=token, error=error,
                 max_mb=MAX_UPLOAD_BYTES // (1024 * 1024), local=local_status(),
+                frontier=frontier_status(),
             ))
 
         def do_GET(self):
@@ -405,7 +431,11 @@ def make_handler(db_path, workdir=None, csrf_token=None):
                         self._respond(404, "Not found", "text/plain; charset=utf-8")
                         return
                     template = _JOB_RUNNING if job["status"] in ("queued", "running") else _JOB
-                    self._respond(200, build_environment().from_string(template).render(job=job))
+                    stage = job["progress"]["stage"]
+                    step_index = JOB_STEPS.index(stage) if stage in JOB_STEPS else -1
+                    self._respond(200, build_environment().from_string(template).render(
+                        job=job, job_steps=JOB_STEPS, job_step_index=step_index,
+                    ))
                     return
                 if len(parts) in (3, 4) and parts[1] == "run" and _is_id(parts[2]):
                     try:

@@ -475,3 +475,61 @@ class ModelChoiceTests(WritePathTests):
     def test_the_frontier_arm_ignores_the_local_model_choice(self):
         self.assertEqual(self._submit_model("frontier", "qwen2.5:7b-instruct"),
                          ("frontier", None))
+
+
+class ScoredStripTests(unittest.TestCase):
+    """The dashboard must score a run the same way the CLI does.
+
+    It did not. `score_run` treats `selected_edge_ids=None` as "everything the
+    verifier passed was also chosen by the model", which yields a flat 100%
+    selection recall. build_report omitted the argument, so the executive strip
+    reported a perfect score for a run the CLI scored at 54.5% - a fabricated
+    number in the most-read place on the page.
+    """
+
+    def test_build_report_passes_the_models_actual_selections(self):
+        from unittest import mock
+
+        import ares.report as report
+
+        connection = sqlite3.connect(":memory:")
+        self.addCleanup(connection.close)
+        initialize(connection)
+        connection.execute(
+            "INSERT INTO runs (run_id, incident_id, dataset_mode) VALUES (?, ?, ?)",
+            ("run-eval", "day1:scored", "eval"),
+        )
+        connection.execute(
+            "INSERT INTO model_selections (run_id, edge_id, rationale, attack_technique_id)"
+            " VALUES (?, ?, ?, ?)",
+            ("run-eval", "SPAWNED:1:2", "picked", "T1059"),
+        )
+        connection.execute(
+            "INSERT INTO run_metrics (run_id, events_parsed, events_in_scope,"
+            " edges_enumerated, edges_verified, verified_edges_shown, selections_made,"
+            " refuted, aporias, discarded_as_malformed)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("run-eval", 100, 50, 10, 8, 8, 1, 0, 0, 0),
+        )
+        connection.commit()
+
+        captured = {}
+
+        def fake_score_run(_connection, _key, _incident, **kwargs):
+            captured.update(kwargs)
+            return {
+                "badged_edge_count": 1, "correct_badged_edge_count": 1,
+                "observable_true_edge_count": 2, "selected_true_edge_count": 1,
+                "verification_precision": 1.0, "selection_recall": 0.5,
+            }
+
+        with mock.patch.object(report, "score_run", fake_score_run):
+            built = report.build_report(connection, "run-eval")
+
+        self.assertEqual(captured["selected_edge_ids"], {"SPAWNED:1:2"})
+        self.assertIsNotNone(captured["selected_edge_ids"],
+                             "None means 'everything was selected' and fakes a 100% recall")
+        self.assertEqual(captured["edges_enumerated"] if "edges_enumerated" in captured
+                         else captured["enumerated_edge_count"], 10)
+        recall_cell = next(c for c in built.executive["cells"] if c["key"] == "SELECTION RECALL")
+        self.assertEqual(recall_cell["value"], "50.0%")

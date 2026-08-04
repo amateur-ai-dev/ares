@@ -25,6 +25,7 @@ import uuid
 from pathlib import Path
 
 from .pipeline import run_incident
+from .store import job_progress, record_progress
 
 
 # A Sysmon day is tens of megabytes; APT29 day 2 is ~590k events. The cap is set
@@ -145,7 +146,9 @@ def execute_review_job(db_path, job_id, archive_path, workdir):
             (JOB_RUNNING, job_id),
         )
         connection.commit()
+        record_progress(connection, job_id, "extracting the archive")
         findings, skipped = review_archive(archive_path, workdir)
+        record_progress(connection, job_id, "done")
         severities = [finding.severity for finding in findings]
         _finish(connection, job_id, JOB_COMPLETE, started, metrics={
             "findings": findings_as_dicts(findings),
@@ -235,6 +238,11 @@ def execute_job(db_path, job_id, log_path, incident_id):
             (JOB_RUNNING, job_id),
         )
         connection.commit()
+        # The worker owns this connection, so the callback can write straight
+        # through it; the HTTP thread reads committed rows on its own connection.
+        def report(stage, done=0, total=0):
+            record_progress(connection, job_id, stage, done, total)
+
         counts = run_incident(
             connection,
             incident_id=incident_id,
@@ -244,6 +252,7 @@ def execute_job(db_path, job_id, log_path, incident_id):
             top_n=top_n,
             batch_size=batch_size,
             dataset_mode=dataset_mode,
+            on_progress=report,
         )
         metrics = {
             "events_parsed": counts.events_parsed,
@@ -295,8 +304,11 @@ METRIC_DEFAULTS = {
 }
 
 
-def _as_job(row):
+def _as_job(row, progress=None):
     job = dict(zip(JOB_FIELDS, row))
+    job["progress"] = progress or {"stage": "", "done": 0, "total": 0}
+    done, total = job["progress"]["done"], job["progress"]["total"]
+    job["progress"]["percent"] = round(done / total * 100, 1) if total else None
     # Templates render with StrictUndefined, so a queued job with no metrics yet
     # would raise rather than show zeros. Defaults are filled here, once, instead
     # of every template guarding every field.
@@ -314,11 +326,11 @@ def list_jobs(connection, limit=50):
         f"SELECT {', '.join(JOB_FIELDS)} FROM jobs ORDER BY created_at DESC, rowid DESC LIMIT ?",
         (limit,),
     ).fetchall()
-    return [_as_job(row) for row in rows]
+    return [_as_job(row, job_progress(connection, row[0])) for row in rows]
 
 
 def get_job(connection, job_id):
     row = connection.execute(
         f"SELECT {', '.join(JOB_FIELDS)} FROM jobs WHERE job_id = ?", (job_id,)
     ).fetchone()
-    return _as_job(row) if row else None
+    return _as_job(row, job_progress(connection, job_id)) if row else None

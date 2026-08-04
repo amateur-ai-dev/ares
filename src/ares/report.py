@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .rendering import build_environment
 from .scoring import score_run
-from .store import PREDICATE_BADGES, edge_facts, run_metrics
+from .store import PREDICATE_BADGES, edge_facts, run_metrics, session_index
 
 
 @dataclass(frozen=True)
@@ -67,6 +67,8 @@ class RunReport:
     precision_line: str | None
     coverage_line: str | None
     demo_notice: str | None
+    session_number: str
+    created_at: str
     metrics: dict
     funnel: tuple[FunnelStage, ...]
     timeline: tuple[TimelineEntry, ...]
@@ -255,7 +257,21 @@ def build_report(connection, run_id):
     if dataset_mode == "demo":
         demo_notice = "Demo mode: no accuracy figures are produced because this repository authored both the corpus and its answer key."
     else:
-        scored = score_run(connection, _key_for(incident_id), incident_id)
+        # The selections MUST be passed. Without them score_run treats every
+        # verified edge as though the model had chosen it, and selection recall
+        # comes back as a flat 100% - a fabricated perfect score, on the page a
+        # reviewer reads first. The CLI always passed them; this path did not,
+        # and reported 100% for a run the CLI scored at 54.5%.
+        stored_metrics = run_metrics(connection, run_id) or {}
+        scored = score_run(
+            connection,
+            _key_for(incident_id),
+            incident_id,
+            selected_edge_ids={item.edge_id for item in selections},
+            enumerated_edge_count=stored_metrics.get("edges_enumerated", 0),
+            verified_edge_count=stored_metrics.get("edges_verified", len(verified_rows)),
+            verified_edges_shown=stored_metrics.get("verified_edges_shown", 0),
+        )
         adjudicated = scored["badged_edge_count"]
         issued = len(verified_rows)
         precision_line = (
@@ -272,12 +288,14 @@ def build_report(connection, run_id):
         "verified_edges_shown": 0, "selections_made": len(selections),
         "refuted": 0, "aporias": len(aporia_rows), "discarded_as_malformed": 0,
     }
+    session = session_index(connection).get(run_id, {})
     duration = _run_duration(connection, run_id)
     executive = _executive_strip(dataset_mode, scored, metrics, len(verified_rows), duration)
     return RunReport(
         run_id, incident_id, dataset_mode, counts,
         tuple(VerifiedEdge(*row) for row in verified_rows), selections,
         tuple(Aporia(*row) for row in aporia_rows), precision_line, coverage_line, demo_notice,
+        session.get("number", "--"), session.get("created_at", ""),
         metrics,
         _build_funnel(metrics, len(aporia_rows)),
         _build_timeline(connection, run_id, {item.edge_id for item in selections}),
@@ -289,7 +307,13 @@ def build_report(connection, run_id):
 def render_markdown(report):
     """Render the model as text while escaping HTML-capable untrusted values."""
     q = lambda value: escape(str(value), quote=True)
-    lines = ["# ARES report", f"Dataset mode: {q(report.dataset_mode)}", "", "## Run counts"]
+    lines = [
+        f"# ARES report — session {q(report.session_number)}",
+        f"Recorded: {q(report.created_at)}",
+        f"Dataset mode: {q(report.dataset_mode)}",
+        f"Run id: {q(report.run_id)}",
+        "", "## Run counts",
+    ]
     lines.extend(f"- {q(name)}: {value}" for name, value in report.counts.items())
     if report.demo_notice:
         lines.extend(["", report.demo_notice])

@@ -118,6 +118,16 @@ def initialize(connection):
             UNIQUE (run_id, edge_id)
         );
 
+        -- Progress is its own table so the hot path is a single-row upsert that
+        -- never touches the job record the UI reads for provenance.
+        CREATE TABLE IF NOT EXISTS job_progress (
+            job_id TEXT PRIMARY KEY,
+            stage TEXT NOT NULL,
+            done INTEGER NOT NULL DEFAULT 0,
+            total INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS jobs (
             job_id TEXT PRIMARY KEY,
             kind TEXT NOT NULL,
@@ -406,3 +416,47 @@ def edge_facts(connection, run_id):
     ).fetchall()
     columns = ("edge_id", "relation_type", "occurred_at", "source_label", "target_label")
     return [dict(zip(columns, row)) for row in rows]
+
+
+def session_index(connection):
+    """Map every run to a stable, human session number.
+
+    Numbered by creation order, so SESSION 01 is the oldest run in this database
+    and the number never shifts when a new run is added. The raw run_id is still
+    what identifies a run everywhere it matters - URLs, reports, provenance - but
+    it is not what a person should have to read off a screen.
+    """
+    rows = connection.execute(
+        """
+        SELECT run_id, created_at,
+               ROW_NUMBER() OVER (ORDER BY created_at, rowid) AS ordinal
+        FROM runs
+        """
+    ).fetchall()
+    return {
+        run_id: {"number": f"{ordinal:02d}", "created_at": created_at}
+        for run_id, created_at, ordinal in rows
+    }
+
+
+def record_progress(connection, job_id, stage, done=0, total=0):
+    """Upsert where a job has got to. Cheap enough to call from a tight loop."""
+    connection.execute(
+        """
+        INSERT INTO job_progress (job_id, stage, done, total, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(job_id) DO UPDATE SET
+            stage = excluded.stage, done = excluded.done,
+            total = excluded.total, updated_at = excluded.updated_at
+        """,
+        (job_id, stage, done, total),
+    )
+    connection.commit()
+
+
+def job_progress(connection, job_id):
+    row = connection.execute(
+        "SELECT stage, done, total, updated_at FROM job_progress WHERE job_id = ?",
+        (job_id,),
+    ).fetchone()
+    return dict(zip(("stage", "done", "total", "updated_at"), row)) if row else None
