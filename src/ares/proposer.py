@@ -1,6 +1,7 @@
 """Model-facing selection of already-verified Phase 1 predicate edges."""
 
 import json
+import os
 import subprocess
 import urllib.request
 from dataclasses import dataclass
@@ -8,7 +9,10 @@ from dataclasses import dataclass
 from .predicates import PROCESS_OPENED_CONNECTION, SPAWNED
 
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
+# Overridable because in a container Ollama is a different host. Default keeps
+# the bare-metal path identical to what the published results were measured on.
+OLLAMA_HOST = os.environ.get("ARES_OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+OLLAMA_URL = f"{OLLAMA_HOST}/api/chat"
 # Foundation-Sec-8B-Reasoning proved unusable for structured extraction here: it
 # narrates every event in its thinking channel and returns empty content. Swapped
 # under deadline, recorded as a deviation from MASTER_PLAN section 5.

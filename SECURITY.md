@@ -9,7 +9,7 @@ is a solo-built feasibility study produced under a deadline. It has had one
 adversarial review pass (see [Review history](#review-history)) and no external
 testing. Treat it accordingly.
 
-Last updated 2026-08-04.
+Last updated 2026-08-04 (containerisation + dashboard analytics).
 
 ---
 
@@ -303,3 +303,33 @@ closed in exactly the air-gapped environment this is built for.
 **A missing scanner is reported, never silently skipped.** Otherwise a clean
 result would mean either "no secrets" or "no secret scanner" — precisely the
 ambiguity this project exists to remove.
+
+
+## Containerisation (added 2026-08-04)
+
+The container does not loosen anything the bare-metal build enforces, and two
+details are where that could easily have gone wrong.
+
+**Binding.** The server binds `0.0.0.0` inside the container, because binding
+`127.0.0.1` there makes it unreachable from the host. That is not a widening:
+the trust boundary moves from the process to the port mapping, and the compose
+file publishes `127.0.0.1:8420:8420` — the host's loopback only. Host-header
+validation still applies, so binding wider does not widen what the server will
+answer. Removing the `127.0.0.1:` prefix from that mapping is the one edit that
+would expose the dashboard to the network.
+
+**Supply chain.** `gitleaks` and `osv-scanner` are downloaded during the build
+and verified against a pinned SHA-256 **per architecture** before being placed on
+PATH. A Dockerfile is where this check usually gets skipped — `curl | tar` in a
+build layer is still executing an unverified download, just somewhere less
+visible. The per-architecture pinning is not pedantry: an amd64 binary passes an
+amd64 checksum happily on an arm64 host and then dies at runtime, which reads as
+a corrupt download rather than the wrong file.
+
+**Runtime posture.** `read_only: true`, `cap_drop: ALL`, `no-new-privileges`,
+uid 10001, `/data` the only writable path. `HOME` points at tmpfs because semgrep
+insists on writing a settings file — chosen over widening the scrubbed scanner
+environment to carry a semgrep-specific variable.
+
+**Ollama is not published to the host.** Only ARES reaches it, over the private
+compose network.

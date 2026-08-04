@@ -17,6 +17,11 @@ def main():
     parser.add_argument("--db", type=Path, default=Path("data/demo/ares.db"))
     parser.add_argument("--port", type=int, default=8420)
     parser.add_argument(
+        "--host",
+        default=None,
+        help="bind address (default 127.0.0.1, or $ARES_BIND - containers set 0.0.0.0)",
+    )
+    parser.add_argument(
         "--workdir",
         type=Path,
         help="where uploaded logs and archives are stored (default: alongside the database)",
@@ -32,8 +37,9 @@ def main():
     finally:
         connection.close()
 
-    server = make_server(args.db, args.port, args.workdir)
+    server = make_server(args.db, args.port, args.workdir, args.host)
     print(f"ARES dashboard: http://127.0.0.1:{args.port}/  (Ctrl-C to stop)")
+    print(f"  bound to: {server.server_address[0]}")
     print(f"  database: {args.db}")
     print(f"  uploads:  {args.workdir or args.db.parent / 'work'}")
     try:

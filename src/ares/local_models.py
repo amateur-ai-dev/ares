@@ -12,10 +12,12 @@ the dashboard needs to render a page that says exactly that.
 """
 
 import json
+import os
 import urllib.error
 import urllib.request
 
-OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
+OLLAMA_HOST = os.environ.get("ARES_OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+OLLAMA_TAGS_URL = f"{OLLAMA_HOST}/api/tags"
 
 # The model the published local-arm result was measured with. It leads the list
 # so the default matches the number in the paper rather than whatever happens to
@@ -53,7 +55,10 @@ def installed_models(url=OLLAMA_TAGS_URL, timeout=PROBE_TIMEOUT_SECONDS):
     ]
     selectors = [name for name in names if not name.startswith(NON_SELECTOR_MODELS)]
     if not selectors:
-        return [], "Ollama is running but has no usable model pulled."
+        # Reachable but empty. Reported through `reachable=True` in local_status
+        # so the page can give the right instruction: a fresh container needs a
+        # model pulled, not a daemon started.
+        return [], None
     # Preferred first, then everything else alphabetically, so the default is
     # deterministic rather than dependent on Ollama's ordering.
     preferred = [name for name in selectors if name == PREFERRED_LOCAL_MODEL]
@@ -62,10 +67,16 @@ def installed_models(url=OLLAMA_TAGS_URL, timeout=PROBE_TIMEOUT_SECONDS):
 
 
 def local_status(url=OLLAMA_TAGS_URL, timeout=PROBE_TIMEOUT_SECONDS):
-    """Everything a template needs to render the local-model chooser."""
+    """Everything a template needs to render the local-model chooser.
+
+    `reachable` and `has_models` are separate because the remedies are
+    different - start the daemon, versus pull a model - and a page that tells
+    you to run `ollama serve` when it is already running sends you the wrong way.
+    """
     models, error = installed_models(url, timeout)
     return {
         "reachable": error is None,
+        "has_models": bool(models),
         "models": models,
         "error": error,
         "default": models[0] if models else None,

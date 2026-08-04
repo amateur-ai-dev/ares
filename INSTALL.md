@@ -4,7 +4,7 @@ Three ways, in order of how much you should trust them.
 
 ---
 
-## 1. Verified installer (recommended)
+## 1. Verified installer
 
 Download it, check it, then run it. The check is the point — do not skip it.
 
@@ -28,7 +28,38 @@ sh install.sh
 
 ---
 
-## 2. Clone and run
+## 2. Docker
+
+Everything in two containers, nothing on your PATH:
+
+```sh
+git clone https://github.com/amateur-ai-dev/ares.git
+cd ares
+docker compose up -d --build
+./scripts/docker_pull_model.sh          # ~4.7GB, one time
+open http://127.0.0.1:8420/
+```
+
+**What the compose file is careful about:**
+
+- `127.0.0.1:8420:8420` publishes to your loopback **only**. Dropping the
+  `127.0.0.1:` prefix would put the dashboard on every interface, which is
+  precisely what the bare-metal build refuses to do.
+- Ollama is not published to the host at all — only ARES reaches it, over the
+  private compose network.
+- The ARES container runs `read_only`, as uid 10001, with `cap_drop: ALL` and
+  `no-new-privileges`. `/data` is the only writable path, and it is a volume.
+- `semgrep`, `gitleaks` and `osv-scanner` ship **in the image**, each downloaded
+  against a pinned per-architecture SHA-256. A container whose review feature
+  reports "gitleaks: not installed" is doing less than the tool it claims to be.
+- The model pull is a separate command on purpose. A compose file that silently
+  downloads several gigabytes on first start is one people stop trusting.
+
+Stop with `docker compose down`; add `-v` to discard the data and model volumes.
+
+---
+
+## 3. Clone and run
 
 Identical result, one less moving part, and you can read everything before it
 executes. If you are at all unsure, use this.
@@ -41,7 +72,7 @@ cd ares
 
 ---
 
-## 3. The `curl | sh` one-liner
+## 4. The `curl | sh` one-liner
 
 ```sh
 curl -fsSL https://github.com/amateur-ai-dev/ares/releases/download/v0.1.0/install.sh | sh

@@ -420,9 +420,17 @@ class LocalModelChooserTests(unittest.TestCase):
         self.assertEqual(status["models"], [])
 
     def test_running_with_nothing_pulled_is_distinguished_from_being_down(self):
-        status = self._status({"models": []})
-        self.assertFalse(status["reachable"])
-        self.assertIn("no usable model", status["error"])
+        # A fresh container hits this: the daemon is up, nothing is pulled. The
+        # remedy is `ollama pull`, not `ollama serve`, so the two states must not
+        # collapse into one "unavailable".
+        running_but_empty = self._status({"models": []})
+        self.assertTrue(running_but_empty["reachable"])
+        self.assertFalse(running_but_empty["has_models"])
+        self.assertIsNone(running_but_empty["error"])
+
+        down = self._status(fail=urllib.error.URLError("connection refused"))
+        self.assertFalse(down["reachable"])
+        self.assertFalse(down["has_models"])
 
 
 class ModelChoiceTests(WritePathTests):

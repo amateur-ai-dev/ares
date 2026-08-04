@@ -1,0 +1,53 @@
+# ARES, containerised: the dashboard plus the local model it talks to.
+#
+# The port mapping is the security boundary here. `127.0.0.1:8420:8420` publishes
+# to the host's loopback ONLY - dropping the `127.0.0.1:` prefix would expose the
+# dashboard to every machine on the network, which is exactly what the bare-metal
+# build refuses to do. Neither service is on the network by design.
+
+services:
+  ollama:
+    image: ollama/ollama:0.12.6
+    container_name: ares-ollama
+    # Not published to the host at all: only ARES needs to reach it, and it
+    # reaches it over the private compose network.
+    expose:
+      - "11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  ares:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ares
+    depends_on:
+      ollama:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8420:8420"
+    environment:
+      ARES_OLLAMA_HOST: http://ollama:11434
+      ARES_BIND: 0.0.0.0
+    volumes:
+      - ares-data:/data
+    # The application never writes outside /data, so everything else is frozen.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
+  ares-data:
