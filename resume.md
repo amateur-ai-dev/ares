@@ -6,6 +6,66 @@
 
 ---
 
+## 🔖 RESUME HERE (2026-08-04 — write path, code review, installer and samples SHIPPED)
+
+**All eight hackathon deliverables are now built.** The last three landed today.
+
+### What was built today
+
+| Deliverable | State |
+|---|---|
+| 7 — code-review add-on | **Built.** `src/ares/codereview.py` + bundled offline Semgrep rules (`rules/ares-review.yaml`). Smoke-tested: 9 findings / 8 CWEs on the planted sample, all three scanners ran. |
+| 6 — one-line installer | **Built.** `install.sh` (tag + commit pinned, refuses root, HTTPS only) + `scripts/release.sh` + `INSTALL.md`. |
+| Dashboard upload / run / metrics | **Built.** POST `/analyze` and `/review`, per-job metrics page, `jobs` table. |
+| Sample data | **Built.** `samples/demo-incident.json` and `samples/vulnerable-app.zip` (9 planted defects). |
+
+### Tier-0 security: all closed
+
+J (SAST subprocess) and K (archive handling) were the last two open items; both
+are implemented and tested. `SECURITY.md` rows B, G, J, K updated, plus new rows
+M (CSRF) and N (upload storage).
+
+**The write path was the real work.** Loopback binding is not access control — any
+origin in the operator's browser can POST to 127.0.0.1. Guards: Origin/Referer
+check, per-process CSRF token via `hmac.compare_digest`, bounded Content-Length,
+UUID-named storage (uploader's filename is a label only), format probe before the
+parser runs. CSP relaxed by exactly one directive (`form-action 'self'`) with a
+test asserting nothing else moved.
+
+**Defect my own test caught and I fixed:** a bad-CSRF POST re-rendered the index,
+which embeds the valid token. Now returns bare text. Not directly exploitable
+(Origin check + CORS) but wrong.
+
+### Verified today, not assumed
+
+- **109 tests pass** (was 74). New file `tests/test_phase2.py` — zip slip, nested
+  climb, absolute paths, symlink members, zip bombs, shell-injection, scanner
+  timeout, env scrubbing, CSRF, cross-origin, upload rejection, CSP invariants.
+- **Live end-to-end over real HTTP** on port 8433: log upload → job complete in
+  27.5s (400 events parsed, 220 in scope, 30 edges enumerated + verified, 12
+  selections, 2 aporias); archive upload → review complete in 8.4s, 9 findings
+  across CWE-78/79/89/95/295/327/502/798, zero scanners skipped.
+
+### Corrected: the false "picks are never saved" claim
+
+Both diagrams fixed and PDFs regenerated. `HLD_LLD.md`, `design-spec.html` and
+`PAPER.md` never carried the wrong wording — my earlier list was too broad.
+
+### Known gaps, stated plainly
+
+- **The repo is private, so the anonymous installer URL 404s.** Either make it
+  public before sharing the command or authenticate first. Documented in
+  `INSTALL.md`; the installer detects the failure and says so.
+- **No release tag cut yet** — `scripts/release.sh v0.1.0` produces the stamped
+  asset. Until then `PINNED_COMMIT` is empty and the installer warns.
+- **gitleaks found none of the planted secrets** on the sample (Semgrep caught
+  them). Its default rules do not match those literal shapes.
+- Local arm still proven on day 1 only. Day 2 local run was killed at 4h45m.
+  Owner said skip it.
+- Deck: tagline not chosen, screenshots not taken, PPTX untouched by instruction.
+
+---
+
 ## 🔖 RESUME HERE (2026-08-02 evening — BOTH DAYS SCORED on frontier; local proven on day 1 only)
 
 **Deadline extended by 24h on 2026-08-02.** Nithin is separately preparing a paper (drafted, `docs/PAPER.md`) and a deck (template not yet supplied).

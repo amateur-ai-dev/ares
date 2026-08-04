@@ -40,24 +40,56 @@ cd ares
 
 The last one takes a few minutes — it downloads the AI model.
 
-> **Why three commands instead of one?**
+> **There is a one-line installer too — but read this first.**
 > You'll often see tools install with a single line that downloads a script and
 > immediately runs it. That asks you to execute code you haven't seen, from a
-> location that could change after you read this page. ARES is a tool about
-> proving claims rather than trusting them, so it doesn't ask you to do that.
-> The three commands above let you look at what you're running first.
+> location that could change after you read this page. ARES has one
+> (`INSTALL.md`), and it's built carefully: it pins an exact version, checks that
+> version hasn't been tampered with, and refuses to run with administrator
+> powers. But the safest way to use it is still to download it, check it, then
+> run it — which is two commands, not one. The three above are simpler still,
+> because you can read every file before anything runs.
 
 ---
 
 ## 4. Running your first analysis
 
-Still in Terminal, from inside the `ares` folder:
+There are two ways: a window in your browser, or a typed command. **Start with
+the browser** — it's the same tool either way.
+
+### The browser way
+
+```bash
+uv run python scripts/serve_dashboard.py
+```
+
+Then open **http://127.0.0.1:8420/** — that address means "this computer". The
+page is not on the internet and cannot be reached from another machine.
+
+On that page:
+
+1. Under **Analyse a log**, click the file button and pick
+   `samples/demo-incident.json` from the ares folder.
+2. Leave the other boxes as they are.
+3. Click **RUN ANALYSIS**.
+
+You'll land on a page that refreshes itself while the work happens, then fills in
+with the results and a row of numbers describing the run. Nothing is uploaded
+anywhere — "upload" here means "hand this file to the program running on your own
+computer".
+
+There's a second box, **Review code**, that takes a `.zip` of source code and
+lists the security problems in it. Try it with `samples/vulnerable-app.zip`,
+which has nine deliberate defects planted in it. ARES reads that code. It never
+runs it.
+
+### The typed way
 
 ```bash
 uv run python scripts/run_incident.py --incident demo --arm local
 ```
 
-That's the built-in demo incident. It takes a couple of minutes.
+Same built-in demo incident. It takes a couple of minutes.
 
 **What you'll see while it runs:** a stream of progress lines. The tool is doing
 three things in order — reading the log, working out every provable connection

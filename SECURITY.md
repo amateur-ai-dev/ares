@@ -9,7 +9,7 @@ is a solo-built feasibility study produced under a deadline. It has had one
 adversarial review pass (see [Review history](#review-history)) and no external
 testing. Treat it accordingly.
 
-Last updated 2026-08-02.
+Last updated 2026-08-04.
 
 ---
 
@@ -28,16 +28,18 @@ data path.
 | # | Surface | Status | Severity if wrong |
 |---|---|---|---|
 | A | Install: third-party binary download | **Implemented + tested** | Critical — RCE |
-| B | Install: source checkout pinning | **Not implemented** | High |
+| B | Install: source checkout pinning | **Implemented** — tag + commit pin, root refused | High |
 | C | Untrusted log parsing | **Partially implemented** | Medium |
 | D | HTML rendering of untrusted text | **Implemented + tested** | High — stored XSS |
 | E | URL/attribute context | **Implemented + tested** | High |
 | F | Demo/evaluation result separation | **Implemented + tested** | Integrity, not safety |
-| G | Web server binding and Host validation | **In progress** (dashboard being built) | High |
+| G | Web server binding and Host validation | **Implemented + tested** | High |
 | H | SQL injection | **Implemented by construction** | High |
 | I | Secrets in repository | **Implemented + scanned clean** | Medium |
-| J | SAST over user-supplied code | **Not built** | Critical if built carelessly |
-| K | Archive/upload handling | **Not built** | High |
+| J | SAST over user-supplied code | **Implemented + tested** | Critical if built carelessly |
+| K | Archive/upload handling | **Implemented + tested** | High |
+| M | CSRF on the dashboard write path | **Implemented + tested** | High |
+| N | Upload storage and naming | **Implemented + tested** | High — path traversal |
 | L | Excel export formula injection | **Not built** (Excel export cut) | Medium |
 
 ---
@@ -230,3 +232,74 @@ intended security scrutiny.**
 
 Open an issue at `github.com/amateur-ai-dev/ares`. This is a research project
 with no security SLA and no production deployment.
+
+
+---
+
+## The dashboard write path (added 2026-08-04)
+
+The dashboard was read-only until this change. It now accepts an uploaded log and
+starts an analysis, and accepts an uploaded archive and statically scans it. That
+is a genuine expansion of the attack surface and is documented as one.
+
+**The mistake this design avoids:** treating `127.0.0.1` as access control. It is
+not. Loopback binding stops the *network* reaching the server; it does nothing
+about *other origins in the same browser*, any one of which can submit a form to
+`http://127.0.0.1:8420/analyze`. Both write routes therefore enforce:
+
+| Control | What it stops |
+|---|---|
+| `Origin`/`Referer` must be this server or absent | A cross-origin form POST, refused before the body is read |
+| Per-process CSRF token, compared with `hmac.compare_digest` | A blind POST from a page that cannot read our HTML |
+| A token failure returns bare text, never the form page | Handing back the valid token to a caller that just proved it lacked one |
+| `Content-Length` bounded before the body is read | Memory exhaustion from one request |
+| Stored filename is a fresh UUID, uploader's name is a label | Path traversal, absolute paths, device names, overwrite by collision |
+| Format probe before the pipeline is invoked | Feeding the parser something that is not an event log |
+
+**CSP.** Dashboard pages differ from exported reports by exactly one directive —
+`form-action 'self'` instead of `'none'`, because a page cannot submit to itself
+under `'none'`. Script stays forbidden outright on both, which is why a running
+job refreshes with a `<meta http-equiv="refresh">` rather than polling in
+JavaScript. A test asserts the two policies differ by that single directive and
+no other, so a future relaxation cannot slip in unnoticed.
+
+## The code-review add-on (added 2026-08-04)
+
+Two properties carry this feature, and both are asserted in the test suite rather
+than only described here.
+
+**1. Nothing uploaded is ever executed.** No install, no build, no test run, no
+import. The scanners read files. There is no code path from an uploaded archive
+to an interpreter.
+
+**2. Extraction assumes the archive is hostile.** `codereview.safe_extract`
+refuses, and refuses the *whole archive* rather than skipping a member — a
+partial extraction of an archive that tried to escape is a successful attack with
+one arm:
+
+- Zip Slip: `../` and nested `../../../` members, checked by resolving the target
+  and confirming it is still under the extraction root, not by string matching
+- Absolute paths, POSIX and Windows drive-letter form
+- Symlink members, which are how a later member gets written through a link
+- Zip bombs, by declared uncompressed size (256MB), member count (5000) and
+  archive size (32MB)
+
+**Subprocess discipline.** Every scanner runs as an argument list with
+`shell=False`, a 120-second timeout, the extraction directory as cwd, and an
+environment reduced to `PATH`/`HOME`/`LANG` so a scanner cannot pick up the
+operator's credentials. A test asserts that `["echo", "harmless; id"]` prints the
+string rather than running `id`.
+
+**Findings never quote the secret.** gitleaks results carry the rule, file, line
+and CWE, and explicitly not the matched value — a report that quotes the
+credential it found is a second copy of that credential in a file people forward
+around.
+
+**Offline by construction.** The Semgrep ruleset is bundled (`rules/`), not
+`--config=auto`, which downloads rules at scan time. A security tool that phones
+out to decide what counts as a vulnerability is not locally hosted and fails
+closed in exactly the air-gapped environment this is built for.
+
+**A missing scanner is reported, never silently skipped.** Otherwise a clean
+result would mean either "no secrets" or "no secret scanner" — precisely the
+ambiguity this project exists to remove.

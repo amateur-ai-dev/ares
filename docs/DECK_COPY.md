@@ -256,7 +256,7 @@ No copy needed. But map your emphasis to the weighting when you rehearse:
 
 ## Cross-deck consistency notes
 
-1. **Do not say "the model's picks are never stored."** Selections *are* persisted (`model_selections` table). The correct framing everywhere: **selections are stored apart from proven facts and can never carry a badge.** The older wording is still live in `docs/diagrams/ares-dataflow.svg`, `docs/HLD_LLD.md`, `docs/design-spec.html` and `PAPER.md` §6.6 and needs the same fix.
+1. **Do not say "the model's picks are never stored."** Selections *are* persisted (`model_selections` table). The correct framing everywhere: **selections are stored apart from proven facts and can never carry a badge.** Both diagrams have been corrected; `HLD_LLD.md`, `design-spec.html` and `PAPER.md` never carried the wrong wording.
 2. **Never quote precision without coverage.** Always the pair: 100% on adjudicated / 4.2% adjudication coverage.
 3. **Always quote the 78% structural ceiling** alongside the 66.7% and 55.6% recall figures — two of four relationship types were cut, so 100% was never reachable, and saying so first is stronger than being asked.
 4. **The cloud model is a test instrument, not a component.** If a slide implies ARES calls out to a hosted model at runtime, that slide is wrong.
