@@ -651,9 +651,16 @@ class ReportDashboardTests(unittest.TestCase):
         response = self._request(b"GET / HTTP/1.1\r\nHost: evil.example\r\n\r\n")
         self.assertIn(" 403 ", response.splitlines()[0])
 
-    def test_rejects_non_get_method(self):
-        response = self._request(b"POST / HTTP/1.1\r\nHost: localhost:8420\r\n\r\n")
-        self.assertIn(" 405 ", response.splitlines()[0])
+    def test_rejects_methods_other_than_get_and_post(self):
+        # POST became a real method when upload/run landed, so the blanket 405 no
+        # longer applies to it. Everything else is still refused outright.
+        for method in (b"PUT", b"DELETE", b"PATCH", b"HEAD", b"TRACE"):
+            response = self._request(method + b" / HTTP/1.1\r\nHost: localhost:8420\r\n\r\n")
+            self.assertIn(" 405 ", response.splitlines()[0], method.decode())
+
+    def test_post_to_an_unrouted_path_is_not_found(self):
+        response = self._request(b"POST /nope HTTP/1.1\r\nHost: localhost:8420\r\n\r\n")
+        self.assertIn(" 404 ", response.splitlines()[0])
 
 
 class CspEmissionTests(unittest.TestCase):
