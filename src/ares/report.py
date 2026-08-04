@@ -87,7 +87,7 @@ def _key_for(incident_id):
     return root / "eval" / "ground_truth" / "demo.edges.yaml"
 
 
-def _build_funnel(metrics, aporia_count):
+def _build_funnel(metrics, aporia_count, selections_recorded=True):
     """The narrowing from raw log to attack-relevant, with each drop visible.
 
     Aporia is deliberately NOT a stage in the funnel. It is not a narrower subset
@@ -105,7 +105,9 @@ def _build_funnel(metrics, aporia_count):
         ("verified", "Verified", metrics.get("edges_verified", 0),
          "proven by deterministic join"),
         ("attack", "Attack-relevant", metrics.get("selections_made", 0),
-         "selected by the model, from proven links only"),
+         "selected by the model, from proven links only" if selections_recorded
+         else "NOT RECORDED - this run predates selection storage, so this bar is"
+              " missing data rather than a result"),
     ]
     widest = max((value for _, _, value, _ in stages), default=0) or 1
     built = []
@@ -162,7 +164,8 @@ def _build_timeline(connection, run_id, selected_edge_ids):
     return tuple(entries)
 
 
-def _executive_strip(dataset_mode, scored, metrics, issued_badges, duration):
+def _executive_strip(dataset_mode, scored, metrics, issued_badges, duration,
+                     selections_recorded=True):
     """The four numbers a reviewer reads first, or an honest refusal to give them.
 
     Demo runs return no figures at all. The corpus and its answer key were both
@@ -198,9 +201,14 @@ def _executive_strip(dataset_mode, scored, metrics, issued_badges, duration):
             {"key": "PRECISION", "tone": "ok",
              "value": f"{scored['verification_precision']:.0%}" if adjudicated else "—",
              "note": f"{correct}/{adjudicated} adjudicated — read with coverage"},
-            {"key": "SELECTION RECALL", "tone": "acc",
-             "value": f"{scored['selection_recall']:.1%}",
-             "note": f"{scored['selected_true_edge_count']}/{observable} findable links"},
+            {"key": "SELECTION RECALL", "tone": "acc" if selections_recorded else "none",
+             # A run whose selections were never persisted has no recall to
+             # report. Printing 0% would invent a failure out of missing data;
+             # printing the score with selections=None would invent a 100%.
+             "value": f"{scored['selection_recall']:.1%}" if selections_recorded else "—",
+             "note": (f"{scored['selected_true_edge_count']}/{observable} findable links"
+                      if selections_recorded
+                      else "not recorded - this run predates selection storage")},
             {"key": "ADJUDICATION COVERAGE", "tone": "ap",
              "value": f"{coverage:.1%}",
              "note": f"{adjudicated} of {issued_badges} badges — the key is silent on the rest"},
@@ -256,6 +264,8 @@ def build_report(connection, run_id):
     }
     precision_line = coverage_line = demo_notice = None
     scored = None
+    stored = run_metrics(connection, run_id) or {}
+    selections_recorded = bool(stored.get("selections_recorded", 1))
     if dataset_mode == "demo":
         demo_notice = "Demo mode: no accuracy figures are produced because this repository authored both the corpus and its answer key."
     else:
@@ -292,14 +302,15 @@ def build_report(connection, run_id):
     }
     session = session_index(connection).get(run_id, {})
     duration = _run_duration(connection, run_id)
-    executive = _executive_strip(dataset_mode, scored, metrics, len(verified_rows), duration)
+    executive = _executive_strip(dataset_mode, scored, metrics, len(verified_rows),
+                                 duration, selections_recorded)
     return RunReport(
         run_id, incident_id, dataset_mode, counts,
         tuple(VerifiedEdge(*row) for row in verified_rows), selections,
         tuple(Aporia(*row) for row in aporia_rows), precision_line, coverage_line, demo_notice,
         session.get("number", "--"), session.get("created_at", ""),
         metrics,
-        _build_funnel(metrics, len(aporia_rows)),
+            _build_funnel(metrics, len(aporia_rows), selections_recorded),
         _build_timeline(connection, run_id, {item.edge_id for item in selections}),
         executive,
         duration,

@@ -11,6 +11,16 @@ PREDICATE_BADGES = (
 )
 
 
+def migrate(connection):
+    """Add columns that CREATE TABLE IF NOT EXISTS cannot add to an existing table."""
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(run_metrics)")}
+    if columns and "selections_recorded" not in columns:
+        connection.execute(
+            "ALTER TABLE run_metrics ADD COLUMN selections_recorded INTEGER NOT NULL DEFAULT 1"
+        )
+        connection.commit()
+
+
 def initialize(connection):
     connection.execute("PRAGMA foreign_keys = ON")
     predicate_badges = ", ".join(repr(badge) for badge in PREDICATE_BADGES)
@@ -96,7 +106,13 @@ def initialize(connection):
             selections_made INTEGER NOT NULL,
             refuted INTEGER NOT NULL,
             aporias INTEGER NOT NULL,
-            discarded_as_malformed INTEGER NOT NULL
+            discarded_as_malformed INTEGER NOT NULL,
+            -- 0 for runs imported from before model_selections existed. Those
+            -- runs DID select edges; the picks were simply never persisted, so
+            -- "0 selections" is missing data rather than a measurement. The flag
+            -- is what lets the report refuse to score them instead of reporting
+            -- a recall of 0% that never happened.
+            selections_recorded INTEGER NOT NULL DEFAULT 1
         );
 
         -- What a verified edge was ABOUT, kept for display only. Deliberately a
@@ -215,6 +231,7 @@ def initialize(connection):
             ) THEN RAISE(ABORT, 'badge firewall: no matching verifier execution') END;
         END;
     """)
+    migrate(connection)
 
 
 def record_run(connection, run_id, incident_id, dataset_mode):
@@ -359,7 +376,7 @@ def persist_predicate_result(connection, claim_id, predicate_result, run_id):
     return execution_id
 
 
-def record_run_metrics(connection, run_id, counts):
+def record_run_metrics(connection, run_id, counts, selections_recorded=True):
     """Persist the funnel numbers on the run itself.
 
     They already exist on a dashboard job, but a run started from the CLI has no
@@ -371,13 +388,14 @@ def record_run_metrics(connection, run_id, counts):
         INSERT OR REPLACE INTO run_metrics (
             run_id, events_parsed, events_in_scope, edges_enumerated,
             edges_verified, verified_edges_shown, selections_made,
-            refuted, aporias, discarded_as_malformed
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            refuted, aporias, discarded_as_malformed, selections_recorded
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (run_id, counts.events_parsed, counts.events_in_scope,
          counts.edges_enumerated, counts.edges_verified,
          counts.verified_edges_shown, counts.selections_made,
-         counts.refuted, counts.aporias, counts.discarded_as_malformed),
+         counts.refuted, counts.aporias, counts.discarded_as_malformed,
+         1 if selections_recorded else 0),
     )
 
 
@@ -397,7 +415,7 @@ def record_edge_fact(connection, run_id, edge_id, relation_type,
 def run_metrics(connection, run_id):
     columns = ("events_parsed", "events_in_scope", "edges_enumerated",
                "edges_verified", "verified_edges_shown", "selections_made",
-               "refuted", "aporias", "discarded_as_malformed")
+               "refuted", "aporias", "discarded_as_malformed", "selections_recorded")
     row = connection.execute(
         f"SELECT {', '.join(columns)} FROM run_metrics WHERE run_id = ?", (run_id,)
     ).fetchone()
