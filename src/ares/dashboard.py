@@ -326,18 +326,34 @@ def allowed_host(host, port):
     return host in {f"localhost:{port}", f"127.0.0.1:{port}"}
 
 
-def allowed_origin(origin, port):
-    """Accept only an Origin/Referer that is this server itself.
+# Loopback names a browser can legitimately be sitting on. The PORT is
+# deliberately not compared: behind any port mapping - docker -p 9000:8420, an
+# ssh tunnel, a reverse proxy - the port the browser sees is not the port this
+# process bound, and comparing them refuses every POST from a container the
+# moment someone publishes it on a different port.
+#
+# That is not a weakening. The CSRF token is the control that actually stops a
+# cross-site POST: an attacker's page cannot read it, and no origin check
+# substitutes for it. This is the coarse outer filter, and it still refuses
+# every non-loopback origin outright.
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"})
+
+
+def allowed_origin(origin, port=None):
+    """Accept only an Origin/Referer whose host is a loopback address.
 
     A missing Origin is accepted because a same-origin form POST from a browser
-    that omits it is legitimate; the CSRF token is what carries the weight in
-    that case, and an attacker page cannot read it. A *present but foreign*
-    Origin is refused outright - that is unambiguous.
+    that omits it is legitimate, and the CSRF token carries the weight there. A
+    present but non-loopback Origin is refused outright - that is unambiguous.
     """
     if not origin:
         return True
     parsed = urlsplit(origin)
-    return parsed.netloc in {f"localhost:{port}", f"127.0.0.1:{port}"}
+    host = parsed.hostname
+    if host is None:
+        # `Origin: null` - a sandboxed iframe or a file:// page. Not this server.
+        return False
+    return host.lower() in LOOPBACK_HOSTS
 
 
 def non_get_status(method):
@@ -534,8 +550,18 @@ def make_handler(db_path, workdir=None, csrf_token=None):
                 self._respond(403, "Forbidden", "text/plain; charset=utf-8")
                 return
             port = self.server.server_port
-            if not allowed_origin(self.headers.get("Origin") or self.headers.get("Referer"), port):
-                self._respond(403, "Cross-origin request refused", "text/plain; charset=utf-8")
+            claimed = self.headers.get("Origin") or self.headers.get("Referer")
+            if not allowed_origin(claimed, port):
+                # Name the origin. "Cross-origin request refused" with no further
+                # detail is unactionable for whoever hits it, and this is the
+                # caller's own header being read back to them.
+                print(f"refused cross-origin POST from {claimed!r}", flush=True)
+                self._respond(
+                    403,
+                    f"Cross-origin request refused: {claimed}\n"
+                    "This dashboard only accepts requests from a loopback origin.",
+                    "text/plain; charset=utf-8",
+                )
                 return
             path = urlsplit(self.path).path
             if path not in ("/analyze", "/review"):

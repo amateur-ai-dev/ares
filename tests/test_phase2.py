@@ -242,11 +242,21 @@ class MultipartTests(unittest.TestCase):
 class OriginTests(unittest.TestCase):
     def test_a_foreign_origin_is_refused(self):
         self.assertFalse(allowed_origin("https://evil.example", 8420))
-        self.assertFalse(allowed_origin("http://127.0.0.1:9999", 8420))
+        self.assertFalse(allowed_origin("http://10.0.0.5:8420", 8420))
+        self.assertFalse(allowed_origin("http://127.0.0.1.evil.example", 8420))
+        self.assertFalse(allowed_origin("null", 8420))
 
     def test_this_server_is_accepted(self):
         self.assertTrue(allowed_origin("http://127.0.0.1:8420", 8420))
         self.assertTrue(allowed_origin("http://localhost:8420/x", 8420))
+
+    def test_a_loopback_origin_on_a_mapped_port_is_accepted(self):
+        # docker -p 9000:8420, an ssh tunnel, a reverse proxy: the port the
+        # browser sees is not the port this process bound. Comparing ports
+        # refused every POST in those setups.
+        self.assertTrue(allowed_origin("http://127.0.0.1:9000", 8420))
+        self.assertTrue(allowed_origin("http://localhost", 8420))
+        self.assertTrue(allowed_origin("http://[::1]:8420", 8420))
 
     def test_an_absent_origin_is_left_to_the_csrf_token(self):
         self.assertTrue(allowed_origin(None, 8420))
