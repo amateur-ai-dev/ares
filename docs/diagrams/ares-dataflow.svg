@@ -77,9 +77,9 @@
   <!-- memory boundary -->
   <path class="dash" d="M1040 778 L1040 826"/>
   <rect x="760" y="836" width="560" height="120" fill="#f7f6f3" stroke="#a0a8b4" stroke-width="2" stroke-dasharray="7 6" rx="8"/>
-  <text x="792" y="878" class="h" font-size="20">The AI's picks are kept apart</text>
-  <text x="792" y="910" class="s">Stored in their own table, never badged.</text>
-  <text x="792" y="938" class="s">A model's opinion cannot become a proven fact.</text>
+  <text x="792" y="878" class="h" font-size="20">The AI's picks are never saved</text>
+  <text x="792" y="910" class="s">They live in memory for one run, then go.</text>
+  <text x="792" y="938" class="s">A model's opinion cannot become a stored fact.</text>
 
   <!-- left legend -->
   <rect x="80" y="836" width="560" height="120" fill="#f7f6f3" stroke="#c9cdd4" stroke-width="2" rx="8"/>

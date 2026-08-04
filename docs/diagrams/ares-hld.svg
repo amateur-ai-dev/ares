@@ -67,7 +67,7 @@
   <rect class="box" x="120" y="784" width="420" height="112"/>
   <text x="152" y="826" class="h">SQLite</text>
   <text x="152" y="858" class="s">Proven facts only.</text>
-  <text x="152" y="884" class="s">Model picks kept apart. Never badged.</text>
+  <text x="152" y="884" class="s">The model's picks are never stored.</text>
 
   <!-- OUTPUT -->
   <text x="620" y="766" class="lbl">OUTPUT</text>
