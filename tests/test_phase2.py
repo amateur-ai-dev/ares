@@ -712,3 +712,22 @@ class ExportParityTests(unittest.TestCase):
         for rendered in (dashboard, export):
             self.assertNotIn(payload, rendered)
             self.assertIn("&lt;script&gt;", rendered)
+
+
+class DownloadHeaderTests(unittest.TestCase):
+    """Reports must land in Downloads, not render in a tab."""
+
+    def test_the_filename_names_the_session_and_is_header_safe(self):
+        from ares.dashboard import download_name
+
+        report = type("R", (), {"session_number": "07", "dataset_mode": "eval"})()
+        self.assertEqual(download_name(report, "html"), "ares-session-07-eval.html")
+
+        # A filename reaching Content-Disposition unescaped is header injection.
+        hostile = type("R", (), {
+            "session_number": '01"\r\nX-Injected: yes',
+            "dataset_mode": "../../etc/passwd",
+        })()
+        name = download_name(hostile, "md")
+        for forbidden in ('"', "\r", "\n", "/", ".."):
+            self.assertNotIn(forbidden, name, forbidden)

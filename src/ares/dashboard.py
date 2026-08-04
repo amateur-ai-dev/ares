@@ -400,9 +400,19 @@ def make_handler(db_path, workdir=None, csrf_token=None):
         def _allowed_host(self):
             return allowed_host(self.headers.get("Host"), self.server.server_port)
 
-        def _respond(self, status, body, content_type="text/html; charset=utf-8"):
+        def _respond(self, status, body, content_type="text/html; charset=utf-8",
+                     download_as=None):
             payload = body.encode("utf-8")
-            self._headers(status, content_type, length=len(payload))
+            extra = ()
+            if download_as:
+                # Without this the browser renders the report in a tab and the
+                # analyst has nothing on disk to attach to a ticket. The filename
+                # is built from the session number and dataset mode - values this
+                # process chose - and is re-checked here rather than trusted,
+                # because a filename that reached a Content-Disposition header
+                # unescaped is a header-injection primitive.
+                extra = (("Content-Disposition", f'attachment; filename="{download_as}"'),)
+            self._headers(status, content_type, extra, length=len(payload))
             self.wfile.write(payload)
             self.close_connection = True
 
@@ -462,9 +472,12 @@ def make_handler(db_path, workdir=None, csrf_token=None):
                     if len(parts) == 3:
                         self._respond(200, render_run_detail(report))
                     elif parts[3] == "report.md":
-                        self._respond(200, render_markdown(report), "text/markdown; charset=utf-8")
+                        self._respond(200, render_markdown(report),
+                                      "text/markdown; charset=utf-8",
+                                      download_name(report, "md"))
                     elif parts[3] == "report.html":
-                        self._respond(200, render_html(report))
+                        self._respond(200, render_html(report), "text/html; charset=utf-8",
+                                      download_name(report, "html"))
                     else:
                         self._respond(404, "Not found", "text/plain; charset=utf-8")
                     return
@@ -639,6 +652,23 @@ def make_handler(db_path, workdir=None, csrf_token=None):
 
     Handler.csrf_token = token
     return Handler
+
+
+# No dot in the stem. Allowing it left `../..` collapsing to `..-..`, which is
+# not exploitable in a Content-Disposition (browsers take the basename) but is
+# exactly the sort of residue that becomes a bug when the value is later joined
+# to a path by someone who assumed it was clean. The extension is appended after.
+SAFE_FILENAME = re.compile(r"[^A-Za-z0-9_-]+")
+
+
+def download_name(report, extension):
+    """A filename that says which session it is, safe for a header and a disk.
+
+    Everything outside [A-Za-z0-9_-] is collapsed, which removes quotes, CRLF,
+    path separators and dot segments as a class rather than filtering for each.
+    """
+    stem = f"ares-session-{report.session_number}-{report.dataset_mode}"
+    return SAFE_FILENAME.sub("-", stem)[:80].strip("-") + f".{extension}"
 
 
 def _is_id(value):
