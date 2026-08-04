@@ -70,8 +70,15 @@ On that page:
 
 1. Under **Analyse a log**, click the file button and pick
    `samples/demo-incident.json` from the ares folder.
-2. Leave the other boxes as they are.
-3. Click **RUN ANALYSIS**.
+2. Leave **Selector arm** on *local* — that means the AI runs on your own
+   computer. The **Local model** box below it lists the AI models you actually
+   have installed; the recommended one is already selected.
+3. Leave the other boxes as they are.
+4. Click **RUN ANALYSIS**.
+
+> If the **Local model** box says *unavailable*, the AI service isn't running.
+> Open another Terminal window and type `ollama serve`, leave it running, then
+> reload the page.
 
 You'll land on a page that refreshes itself while the work happens, then fills in
 with the results and a row of numbers describing the run. Nothing is uploaded

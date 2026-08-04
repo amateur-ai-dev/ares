@@ -25,12 +25,28 @@ verify_file() {
 
 if ! command -v ollama >/dev/null 2>&1; then
   printf 'Ollama is required. Install it from https://ollama.com/download, then rerun this script.\n' >&2
+  printf 'This script deliberately does not install it for you: Ollama ships a\n' >&2
+  printf 'curl|sh installer of its own, and chaining one into another means you end\n' >&2
+  printf 'up running two scripts you never read.\n' >&2
+  exit 1
+fi
+
+# Having the binary is not the same as having the daemon. Every local run talks
+# to the HTTP API, so the API is what gets checked - `ollama serve` may simply
+# not be running yet, and finding that out here beats finding it out several
+# minutes into an analysis.
+if ! curl --fail --silent --max-time 5 http://localhost:11434/api/tags >/dev/null 2>&1; then
+  printf 'Ollama is installed but not answering on http://localhost:11434\n' >&2
+  printf 'Start it in another terminal with:  ollama serve\n' >&2
+  printf 'Then rerun this script.\n' >&2
   exit 1
 fi
 if ! command -v uv >/dev/null 2>&1; then
   printf 'uv is required. Install it with: curl -LsSf https://astral.sh/uv/install.sh | sh\nThen rerun this script.\n' >&2
   exit 1
 fi
+
+selection_model="qwen2.5:7b-instruct"
 
 mkdir -p "$data_dir/attack" "$data_dir/evtx" "$model_dir"
 
@@ -62,6 +78,14 @@ fi
 
 if ! ollama list | awk 'NR > 1 {print $1}' | grep -Fxq nomic-embed-text; then
   ollama pull nomic-embed-text
+fi
+
+# The model the published local-arm result was actually measured with. It was
+# missing from this script, so a clean install could not reproduce the number in
+# the paper without knowing to pull it by hand.
+if ! ollama list | awk 'NR > 1 {print $1}' | grep -Fxq "$selection_model"; then
+  printf 'Pulling the local selection model (%s). This is a few GB.\n' "$selection_model"
+  ollama pull "$selection_model"
 fi
 
 if ! ollama list | awk 'NR > 1 {print $1}' | grep -Fxq foundation-sec-8b; then

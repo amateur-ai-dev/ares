@@ -83,13 +83,24 @@ Sample data to try it against ships in `samples/`:
 | `samples/demo-incident.json` | Upload under **Analyse a log**. Demo corpus — deliberately produces no accuracy score. |
 | `samples/vulnerable-app.zip` | Upload under **Review code**. Nine planted defects across eight CWEs. |
 
+Pick the selector on the dashboard: **local** runs on this machine and offers a
+**Local model** dropdown listing what Ollama actually has pulled; **frontier** is
+the test arm and ignores that choice. If Ollama is not running the dropdown says
+so and tells you the command, rather than accepting the job and failing minutes
+later.
+
 ---
 
 ## Requirements
 
 - `git`, `curl`, `python3` (3.12+)
 - [`uv`](https://docs.astral.sh/uv/) for dependency management
-- [Ollama](https://ollama.com) with a local model pulled, for the selection step
+- [Ollama](https://ollama.com), **installed and running** (`ollama serve`), for the
+  local selection arm. `setup_toolchain.sh` checks the daemon answers on
+  `localhost:11434` and pulls `qwen2.5:7b-instruct` — the model the published
+  local result was measured with — but it does **not** install Ollama itself.
+  Chaining one `curl | sh` installer into another means running two scripts you
+  never read.
 - Optional, for the code-review add-on: `semgrep`, `gitleaks`, `osv-scanner`.
   Missing ones are reported in the results as not-run rather than silently
   skipped.

@@ -51,6 +51,27 @@ which embeds the valid token. Now returns bare text. Not directly exploitable
 Both diagrams fixed and PDFs regenerated. `HLD_LLD.md`, `design-spec.html` and
 `PAPER.md` never carried the wrong wording — my earlier list was too broad.
 
+### Added after the first pass (same day)
+
+- **Dashboard model chooser.** `src/ares/local_models.py` probes
+  `localhost:11434/api/tags` on every render (not cached — the operator starts
+  and stops Ollama independently). Lists real installed models, `qwen2.5:7b-instruct`
+  first and labelled "measured in the paper". Submitted name is validated against
+  that list; frontier arm discards it. Live-verified: job recorded
+  `('local', 'qwen2.5:7b-instruct', 'complete', 37.8s)`.
+- **Local spinup WAS a gap in the installer, now closed.** `setup_toolchain.sh`
+  only checked the ollama *binary*, never the daemon, and never pulled the
+  selection model. It now curl-checks `localhost:11434` and pulls
+  `qwen2.5:7b-instruct`.
+- **`proposer.OLLAMA_MODEL` default changed `granite4:3b` → `qwen2.5:7b-instruct`.**
+  The old default meant a plain `--arm local` run did not reproduce the paper's
+  number unless the operator knew to pass `--model`.
+- **Diagrams reverted to "the model's picks are never stored"** at owner's
+  direction: that is the intended production behaviour, selections persist today
+  only so the dashboard can display them, and the feature changes in the prod
+  build. Mismatch with `store.py` is deliberate and recorded in `DECK_COPY.md`.
+- 122 tests pass (was 109).
+
 ### Known gaps, stated plainly
 
 - **The repo is private, so the anonymous installer URL 404s.** Either make it

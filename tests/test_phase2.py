@@ -10,6 +10,7 @@ origin, a filename that tries to be a path.
 
 import os
 import socket
+import urllib.error
 import sqlite3
 import tempfile
 import threading
@@ -367,3 +368,102 @@ class PolicyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LocalModelChooserTests(unittest.TestCase):
+    """The chooser lists what Ollama has, and says so plainly when it has nothing."""
+
+    def _status(self, payload=None, fail=None):
+        import json as _json
+        from unittest import mock
+
+        import ares.local_models as local_models
+
+        if fail is not None:
+            with mock.patch.object(local_models.urllib.request, "urlopen", side_effect=fail):
+                return local_models.local_status()
+
+        class _Response:
+            def read(self):
+                return _json.dumps(payload).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+        with mock.patch.object(local_models.urllib.request, "urlopen", return_value=_Response()):
+            return local_models.local_status()
+
+    def test_the_measured_model_is_offered_first(self):
+        status = self._status({"models": [
+            {"name": "granite4:3b"},
+            {"name": "qwen2.5:7b-instruct"},
+            {"name": "aardvark:1b"},
+        ]})
+        self.assertEqual(status["models"][0], "qwen2.5:7b-instruct")
+        self.assertEqual(status["default"], "qwen2.5:7b-instruct")
+        self.assertTrue(status["preferred_present"])
+
+    def test_embedding_models_are_not_offered_as_selectors(self):
+        status = self._status({"models": [
+            {"name": "nomic-embed-text:latest"},
+            {"name": "granite4:3b"},
+        ]})
+        self.assertEqual(status["models"], ["granite4:3b"])
+
+    def test_a_daemon_that_is_down_is_reported_not_raised(self):
+        status = self._status(fail=urllib.error.URLError("connection refused"))
+        self.assertFalse(status["reachable"])
+        self.assertIn("not reachable", status["error"])
+        self.assertEqual(status["models"], [])
+
+    def test_running_with_nothing_pulled_is_distinguished_from_being_down(self):
+        status = self._status({"models": []})
+        self.assertFalse(status["reachable"])
+        self.assertIn("no usable model", status["error"])
+
+
+class ModelChoiceTests(WritePathTests):
+    """A submitted model name is a request, validated against reality."""
+
+    def _submit_model(self, arm, model):
+        from unittest import mock
+
+        body = (
+            b"--B\r\nContent-Disposition: form-data; name=\"csrf\"\r\n\r\ntest-token\r\n"
+            b"--B\r\nContent-Disposition: form-data; name=\"arm\"\r\n\r\n" + arm.encode() + b"\r\n"
+            b"--B\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n" + model.encode() + b"\r\n"
+            b"--B\r\nContent-Disposition: form-data; name=\"logfile\"; filename=\"a.json\"\r\n\r\n"
+            + EVENT_LINE + b"\r\n--B--\r\n"
+        )
+        with mock.patch("ares.dashboard.local_status", return_value={
+            "reachable": True, "models": ["qwen2.5:7b-instruct"],
+            "error": None, "default": "qwen2.5:7b-instruct",
+            "preferred_present": True, "preferred": "qwen2.5:7b-instruct",
+        }):
+            self._request(
+                b"POST /analyze HTTP/1.1\r\nHost: localhost:8420\r\n"
+                b"Content-Type: multipart/form-data; boundary=B\r\n"
+                b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body
+            )
+        connection = sqlite3.connect(self.db_path)
+        try:
+            return connection.execute("SELECT arm, model FROM jobs").fetchone()
+        finally:
+            connection.close()
+
+    def test_an_installed_model_is_recorded_on_the_job(self):
+        self.assertEqual(self._submit_model("local", "qwen2.5:7b-instruct"),
+                         ("local", "qwen2.5:7b-instruct"))
+
+    def test_a_model_ollama_does_not_have_is_discarded(self):
+        # Otherwise the run fails inside the model call, minutes later, with an
+        # error that looks like a bug rather than a bad choice.
+        self.assertEqual(self._submit_model("local", "not-installed:70b"),
+                         ("local", None))
+
+    def test_the_frontier_arm_ignores_the_local_model_choice(self):
+        self.assertEqual(self._submit_model("frontier", "qwen2.5:7b-instruct"),
+                         ("frontier", None))
