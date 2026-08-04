@@ -86,6 +86,38 @@ def initialize(connection):
             UNIQUE (run_id, edge_id)
         );
 
+        CREATE TABLE IF NOT EXISTS run_metrics (
+            run_id TEXT PRIMARY KEY REFERENCES runs(run_id),
+            events_parsed INTEGER NOT NULL,
+            events_in_scope INTEGER NOT NULL,
+            edges_enumerated INTEGER NOT NULL,
+            edges_verified INTEGER NOT NULL,
+            verified_edges_shown INTEGER NOT NULL,
+            selections_made INTEGER NOT NULL,
+            refuted INTEGER NOT NULL,
+            aporias INTEGER NOT NULL,
+            discarded_as_malformed INTEGER NOT NULL
+        );
+
+        -- What a verified edge was ABOUT, kept for display only. Deliberately a
+        -- separate table from claims: claims are badge-bearing evidence behind an
+        -- immutability trigger, and nothing that exists to draw a picture belongs
+        -- on that path. Nothing here can widen or contradict a badge.
+        CREATE TABLE IF NOT EXISTS edge_facts (
+            id INTEGER PRIMARY KEY,
+            -- No foreign key on run_id, matching verifier_executions. Making a
+            -- display table stricter than the evidence table it illustrates
+            -- would mean verification could succeed while drawing its picture
+            -- failed, which is the wrong way round.
+            run_id TEXT NOT NULL,
+            edge_id TEXT NOT NULL,
+            relation_type TEXT NOT NULL,
+            occurred_at TEXT,
+            source_label TEXT NOT NULL,
+            target_label TEXT NOT NULL,
+            UNIQUE (run_id, edge_id)
+        );
+
         CREATE TABLE IF NOT EXISTS jobs (
             job_id TEXT PRIMARY KEY,
             kind TEXT NOT NULL,
@@ -315,3 +347,62 @@ def persist_predicate_result(connection, claim_id, predicate_result, run_id):
             ),
         )
     return execution_id
+
+
+def record_run_metrics(connection, run_id, counts):
+    """Persist the funnel numbers on the run itself.
+
+    They already exist on a dashboard job, but a run started from the CLI has no
+    job - and the run detail page should not render a different, poorer view
+    depending on which door the run came through.
+    """
+    connection.execute(
+        """
+        INSERT OR REPLACE INTO run_metrics (
+            run_id, events_parsed, events_in_scope, edges_enumerated,
+            edges_verified, verified_edges_shown, selections_made,
+            refuted, aporias, discarded_as_malformed
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (run_id, counts.events_parsed, counts.events_in_scope,
+         counts.edges_enumerated, counts.edges_verified,
+         counts.verified_edges_shown, counts.selections_made,
+         counts.refuted, counts.aporias, counts.discarded_as_malformed),
+    )
+
+
+def record_edge_fact(connection, run_id, edge_id, relation_type,
+                     occurred_at, source_label, target_label):
+    """Record what a verified edge was about, for display only."""
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO edge_facts (
+            run_id, edge_id, relation_type, occurred_at, source_label, target_label
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (run_id, edge_id, relation_type, occurred_at, source_label, target_label),
+    )
+
+
+def run_metrics(connection, run_id):
+    columns = ("events_parsed", "events_in_scope", "edges_enumerated",
+               "edges_verified", "verified_edges_shown", "selections_made",
+               "refuted", "aporias", "discarded_as_malformed")
+    row = connection.execute(
+        f"SELECT {', '.join(columns)} FROM run_metrics WHERE run_id = ?", (run_id,)
+    ).fetchone()
+    return dict(zip(columns, row)) if row else None
+
+
+def edge_facts(connection, run_id):
+    """Verified edges in the order they happened, unknown timestamps last."""
+    rows = connection.execute(
+        """
+        SELECT edge_id, relation_type, occurred_at, source_label, target_label
+        FROM edge_facts WHERE run_id = ?
+        ORDER BY occurred_at IS NULL, occurred_at, id
+        """,
+        (run_id,),
+    ).fetchall()
+    columns = ("edge_id", "relation_type", "occurred_at", "source_label", "target_label")
+    return [dict(zip(columns, row)) for row in rows]

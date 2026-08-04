@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .rendering import build_environment
 from .scoring import score_run
-from .store import PREDICATE_BADGES
+from .store import PREDICATE_BADGES, edge_facts, run_metrics
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,30 @@ class Aporia:
 
 
 @dataclass(frozen=True)
+class FunnelStage:
+    """One narrowing step, with the share of the previous stage it kept."""
+
+    key: str
+    label: str
+    value: int
+    note: str
+    share_of_previous: float
+    share_of_widest: float
+    bar_width: float
+
+
+@dataclass(frozen=True)
+class TimelineEntry:
+    edge_id: str
+    relation_type: str
+    occurred_at: str | None
+    source_label: str
+    target_label: str
+    attack_relevant: bool
+    offset: float
+
+
+@dataclass(frozen=True)
 class RunReport:
     run_id: str
     incident_id: str
@@ -43,6 +67,11 @@ class RunReport:
     precision_line: str | None
     coverage_line: str | None
     demo_notice: str | None
+    metrics: dict
+    funnel: tuple[FunnelStage, ...]
+    timeline: tuple[TimelineEntry, ...]
+    executive: dict
+    duration_seconds: float | None
 
 
 def _key_for(incident_id):
@@ -52,6 +81,136 @@ def _key_for(incident_id):
     if incident_id.startswith("day2:"):
         return root / "eval" / "ground_truth" / "apt29-day2.edges.yaml"
     return root / "eval" / "ground_truth" / "demo.edges.yaml"
+
+
+def _build_funnel(metrics, aporia_count):
+    """The narrowing from raw log to attack-relevant, with each drop visible.
+
+    Aporia is deliberately NOT a stage in the funnel. It is not a narrower subset
+    of the previous stage - it is the set of relations the verifier refused to
+    decide, which sits beside the chain rather than inside it. Drawing it as a
+    fifth bar would imply it survived the first four.
+    """
+    stages = [
+        ("events", "Events read", metrics.get("events_parsed", 0),
+         "every line in the log"),
+        ("in_scope", "In scope", metrics.get("events_in_scope", 0),
+         "process-create and network-connect only"),
+        ("relations", "Relations found", metrics.get("edges_enumerated", 0),
+         "candidate links, enumerated by code"),
+        ("verified", "Verified", metrics.get("edges_verified", 0),
+         "proven by deterministic join"),
+        ("attack", "Attack-relevant", metrics.get("selections_made", 0),
+         "selected by the model, from proven links only"),
+    ]
+    widest = max((value for _, _, value, _ in stages), default=0) or 1
+    built = []
+    previous = None
+    for key, label, value, note in stages:
+        share = value / widest
+        built.append(FunnelStage(
+            key=key, label=label, value=value, note=note,
+            share_of_previous=(value / previous) if previous else 1.0,
+            share_of_widest=share,
+            # Square root, and the page says so. At linear scale a run that goes
+            # 400 events -> 5 attack-relevant draws a final bar 1.2% wide, which
+            # is invisible; the choice is between distorting silently and
+            # distorting openly. Order is preserved, and the exact counts sit
+            # next to every bar, so the numbers are never the thing being read
+            # off the picture.
+            bar_width=max(share ** 0.5 * 100, 1.5),
+        ))
+        previous = value or None
+    return tuple(built)
+
+
+def _build_timeline(connection, run_id, selected_edge_ids):
+    """Verified edges in time order, with the model's picks marked.
+
+    Position is computed here rather than in the template because the template
+    cannot run script - the page has no JavaScript at all - so every coordinate
+    has to arrive already resolved.
+    """
+    facts = edge_facts(connection, run_id)
+    stamped = [fact for fact in facts if fact["occurred_at"]]
+    earliest = min((fact["occurred_at"] for fact in stamped), default=None)
+    latest = max((fact["occurred_at"] for fact in stamped), default=None)
+    entries = []
+    for index, fact in enumerate(facts):
+        occurred = fact["occurred_at"]
+        if occurred and earliest and latest and latest != earliest:
+            # Rank rather than true elapsed time: Sysmon UtcTime is a string, and
+            # an attack's interesting events often cluster inside one second.
+            # Spacing by order keeps them individually visible.
+            position = sorted(fact["occurred_at"] for fact in stamped).index(occurred)
+            offset = position / max(len(stamped) - 1, 1)
+        else:
+            offset = index / max(len(facts) - 1, 1)
+        entries.append(TimelineEntry(
+            edge_id=fact["edge_id"],
+            relation_type=fact["relation_type"],
+            occurred_at=occurred,
+            source_label=fact["source_label"],
+            target_label=fact["target_label"],
+            attack_relevant=fact["edge_id"] in selected_edge_ids,
+            offset=round(offset * 100, 2),
+        ))
+    return tuple(entries)
+
+
+def _executive_strip(dataset_mode, scored, metrics, issued_badges, duration):
+    """The four numbers a reviewer reads first, or an honest refusal to give them.
+
+    Demo runs return no figures at all. The corpus and its answer key were both
+    authored in this repository, so a precision number here would be self-graded;
+    and a number on a screen travels further than the caveat beside it. Refusing
+    is the only version of that caveat that cannot be cropped out.
+
+    Precision and adjudication coverage are produced as a PAIR and neither is
+    emitted alone. Precision over 33 adjudicated of 794 issued badges is not
+    "precision", and quoting it without its denominator is the exact failure this
+    project exists to remove.
+    """
+    duration_text = f"{duration:.1f}s" if duration else "—"
+    if dataset_mode == "demo" or not scored:
+        return {
+            "scored": False,
+            "reason": "Demo corpus — self-graded figures are withheld, not merely unavailable.",
+            "cells": [
+                {"key": "PRECISION", "tone": "none", "value": "—", "note": "not scored in demo mode"},
+                {"key": "SELECTION RECALL", "tone": "none", "value": "—", "note": "not scored in demo mode"},
+                {"key": "ADJUDICATION COVERAGE", "tone": "none", "value": "—", "note": "no independent key"},
+                {"key": "RUN DURATION", "tone": "none", "value": duration_text, "note": "wall clock"},
+            ],
+        }
+    adjudicated = scored["badged_edge_count"]
+    correct = scored["correct_badged_edge_count"]
+    observable = scored["observable_true_edge_count"]
+    coverage = (adjudicated / issued_badges) if issued_badges else 0
+    return {
+        "scored": True,
+        "reason": None,
+        "cells": [
+            {"key": "PRECISION", "tone": "ok",
+             "value": f"{scored['verification_precision']:.0%}" if adjudicated else "—",
+             "note": f"{correct}/{adjudicated} adjudicated — read with coverage"},
+            {"key": "SELECTION RECALL", "tone": "acc",
+             "value": f"{scored['selection_recall']:.1%}",
+             "note": f"{scored['selected_true_edge_count']}/{observable} findable links"},
+            {"key": "ADJUDICATION COVERAGE", "tone": "ap",
+             "value": f"{coverage:.1%}",
+             "note": f"{adjudicated} of {issued_badges} badges — the key is silent on the rest"},
+            {"key": "RUN DURATION", "tone": "none", "value": duration_text, "note": "wall clock"},
+        ],
+    }
+
+
+def _run_duration(connection, run_id):
+    row = connection.execute(
+        "SELECT duration_ms FROM jobs WHERE run_id = ? ORDER BY rowid DESC LIMIT 1",
+        (run_id,),
+    ).fetchone()
+    return (row[0] / 1000) if row and row[0] else None
 
 
 def build_report(connection, run_id):
@@ -92,24 +251,38 @@ def build_report(connection, run_id):
         "aporias": len(aporia_rows),
     }
     precision_line = coverage_line = demo_notice = None
+    scored = None
     if dataset_mode == "demo":
         demo_notice = "Demo mode: no accuracy figures are produced because this repository authored both the corpus and its answer key."
     else:
-        metrics = score_run(connection, _key_for(incident_id), incident_id)
-        adjudicated = metrics["badged_edge_count"]
+        scored = score_run(connection, _key_for(incident_id), incident_id)
+        adjudicated = scored["badged_edge_count"]
         issued = len(verified_rows)
         precision_line = (
             "Precision on adjudicated key edges: "
-            f"{metrics['correct_badged_edge_count']}/{adjudicated}"
+            f"{scored['correct_badged_edge_count']}/{adjudicated}"
         )
         coverage_line = (
             f"Adjudication coverage: {adjudicated} of {issued} badges issued — "
             f"{issued - adjudicated} unadjudicated"
         )
+    metrics = run_metrics(connection, run_id) or {
+        "events_parsed": 0, "events_in_scope": 0,
+        "edges_enumerated": len(verified_rows), "edges_verified": len(verified_rows),
+        "verified_edges_shown": 0, "selections_made": len(selections),
+        "refuted": 0, "aporias": len(aporia_rows), "discarded_as_malformed": 0,
+    }
+    duration = _run_duration(connection, run_id)
+    executive = _executive_strip(dataset_mode, scored, metrics, len(verified_rows), duration)
     return RunReport(
         run_id, incident_id, dataset_mode, counts,
         tuple(VerifiedEdge(*row) for row in verified_rows), selections,
         tuple(Aporia(*row) for row in aporia_rows), precision_line, coverage_line, demo_notice,
+        metrics,
+        _build_funnel(metrics, len(aporia_rows)),
+        _build_timeline(connection, run_id, {item.edge_id for item in selections}),
+        executive,
+        duration,
     )
 
 

@@ -21,8 +21,10 @@ from .store import (
     create_claim,
     initialize,
     persist_predicate_result,
+    record_edge_fact,
     record_model_selection,
     record_run,
+    record_run_metrics,
 )
 
 
@@ -335,7 +337,28 @@ def verify_candidate_edges(connection, incident_id, edges, run_id):
             run_id,
         )
         verified.append(VerifiedEdge(edge, claim_id, outcome))
+        if outcome == "true":
+            # Display facts only, and only for edges that actually passed. An
+            # edge the verifier refused has nothing to plot on a timeline of what
+            # was proven.
+            record_edge_fact(
+                connection, run_id, edge.edge_id, edge.relation_type,
+                edge.target.event.get("UtcTime") or edge.source.event.get("UtcTime"),
+                _display_label(edge.source.event), _display_label(edge.target.event),
+            )
     return verified
+
+
+def _display_label(event):
+    """A short human name for an event: the image, or where it connected to."""
+    image = event.get("Image") or event.get("ParentImage") or ""
+    name = image.replace("\\", "/").rsplit("/", 1)[-1]
+    if event.get("EventID") == 3:
+        destination = event.get("DestinationIp") or event.get("DestinationHostname")
+        port = event.get("DestinationPort")
+        if destination:
+            return f"{name or 'connection'} -> {destination}:{port}" if port else f"{name} -> {destination}"
+    return name or f"event {event.get('EventID', '?')}"
 
 
 def record_demo_orphan_connections(db, incident_id, events, run_id):
@@ -436,6 +459,8 @@ def run_incident(
     connection.commit()
 
     if not verified or limit_chunks == 0:
+        record_run_metrics(connection, run_id, counts)
+        connection.commit()
         return counts
     shown = prioritise_edges(verified, all_events)[:top_n]
     allowed_edge_ids = {item.edge.edge_id for item in shown}
@@ -492,4 +517,6 @@ def run_incident(
         selected_edge_ids=selected_edge_ids,
         discarded_as_malformed=discarded,
     )
+    record_run_metrics(connection, run_id, counts)
+    connection.commit()
     return counts
