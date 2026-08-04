@@ -24,6 +24,7 @@ with a meta tag instead of polling in JavaScript.
 """
 
 import hmac
+import os
 import re
 import secrets
 import sqlite3
@@ -68,9 +69,13 @@ def _page(title, body, refresh=False):
     )
 
 
+# Inline SVG rather than a linked file: the CSP allows no external origin at
+# all, and a logo that silently fails to load is worse than none.
+_LOGO = '<svg class="logo" viewBox="0 0 44 50" role="img" aria-label="ARES"><path d="M22 1.6 41.5 7v20.4c0 11.4-8 18.2-19.5 21.9C10.5 45.6 2.5 38.8 2.5 27.4V7z" fill="#2f4b78"/><path d="M22 9.5 33.4 36h-5.1l-2.2-5.6h-8.2L15.7 36h-5.1z" fill="#fff"/><path d="M22 18.6l2.4 6.4h-4.8z" fill="#2f4b78"/><path d="M28.8 20.5h5.6M28.8 20.5l3.4-3.4M31.4 25.4h4.6M31.4 25.4l3-3M27.5 30.6h4M14 33.5h-4M14 33.5l-3 3" stroke="#cfe0f2" stroke-width="1.15" fill="none" stroke-linecap="round"/><circle cx="35.2" cy="20.5" r="1.25" fill="#e8b45a"/><circle cx="36.6" cy="25.4" r="1.1" fill="#cfe0f2"/><path d="M33 8.4 41 6.2l-1.3 6.6z" fill="#e8b45a"/></svg>'
+
 _BAR = (
     '<body><div class="bar"><div class="in">'
-    '<a class="brand" href="/" style="color:var(--fg)">A<em>R</em>ES</a>'
+    '<a class="brand" href="/">' + _LOGO + '<span>A<em>R</em>ES</span></a>'
     '<span class="tagline">Local incident analysis &middot; nothing leaves this machine</span>'
     '<span class="dot"><i></i>LOCALHOST</span></div></div><main>'
 )
@@ -104,14 +109,18 @@ _ACTIONS = """<p class="lab">START WORK</p><div class="act">
 <div><label for="mode">DATASET MODE</label><select id="mode" name="mode">
 <option value="demo">demo &mdash; no scoring</option><option value="eval">eval</option>
 </select></div></div>
-<div><label for="model">LOCAL MODEL{% if not local.reachable %} &mdash; UNAVAILABLE{% endif %}</label>
-<select id="model" name="model"{% if not local.reachable %} disabled{% endif %}>
+<div><label for="model">LOCAL MODEL{% if not local.has_models %} &mdash; UNAVAILABLE{% endif %}</label>
+<select id="model" name="model"{% if not local.has_models %} disabled{% endif %}>
 {% for name in local.models %}<option value="{{ name }}">{{ name }}{% if name == local.preferred %} &nbsp;&middot; measured in the paper{% endif %}</option>
 {% else %}<option value="">no local model available</option>{% endfor %}
 </select>
-{% if local.reachable %}<p class="hint">Applies to the local arm only. The frontier arm ignores it.
+{% if local.has_models %}<p class="hint">Applies to the local arm only. The frontier arm ignores it.
 {% if not local.preferred_present %}<br><b>{{ local.preferred }}</b> is not pulled &mdash; the published
 local result was measured with it. <code>ollama pull {{ local.preferred }}</code>{% endif %}</p>
+{% elif local.reachable %}<p class="hint">Ollama is running but has no model pulled yet.
+Run <code>ollama pull {{ local.preferred }}</code> &mdash; or, in Docker,
+<code>scripts/docker_pull_model.sh</code> &mdash; then reload this page.
+The frontier arm still works meanwhile.</p>
 {% else %}<p class="hint">{{ local.error }}<br>Start it with <code>ollama serve</code>, then reload this page.
 The frontier arm still works.</p>{% endif %}</div>
 <div class="two">
@@ -204,6 +213,63 @@ _JOB_RUNNING = _page("ARES job", _JOB_BODY, refresh=True)
 
 
 _DETAIL = _page("ARES run", '<body><div class="bar"><div class="in"><span class="brand">A<em>R</em>ES</span><span class="tagline">Local incident analysis &middot; nothing leaves this machine</span><span class="dot"><i></i>LOCALHOST</span></div></div><main><p class="lab">DOWNLOADS</p><div class="panel"><div class="pb"><div class="dl-grid"><a class="dl" href="/run/{{ report.run_id|url }}/report.md"><span class="ext">MD</span><span><b>Markdown report</b><span>plain text &middot; diffable</span></span></a><a class="dl" href="/run/{{ report.run_id|url }}/report.html"><span class="ext">HTML</span><span><b>HTML report</b><span>self-contained &middot; offline</span></span></a><a class="dl" href="/"><span class="ext">&larr;</span><span><b>All runs</b><span>back to index</span></span></a></div></div></div><div class="mode {{ report.dataset_mode }}"><div><b>{{ report.dataset_mode }} DATASET</b>{% if report.demo_notice %}{{ report.demo_notice }}{% else %}Accuracy is measured against the frozen answer key for this corpus.{% endif %}</div></div><h1>{{ report.incident_id }}</h1><p class="sub">{{ report.run_id }}</p><div class="panel"><div class="stats"><div class="stat v1"><span class="v">{{ report.verified_edges|length }}</span><span class="k">VERIFIED</span></div><div class="stat v2"><span class="v">{{ report.selections|length }}</span><span class="k">SELECTED BY MODEL</span></div><div class="stat v3"><span class="v">{{ report.aporias|length }}</span><span class="k">APORIA</span></div></div></div>{% if report.precision_line %}<div class="panel"><div class="ph"><h2>Scored</h2></div><div class="prec"><p class="p1">{{ report.precision_line }}</p><p class="p2">{{ report.coverage_line }}</p></div></div>{% endif %}<div class="panel aporia"><div class="ph"><h2>Aporia &mdash; cannot be proven</h2><span class="note">shown, never hidden</span></div><p class="lead" style="padding-top:1rem">The evidence does not support a conclusion here. The tool refuses to guess.</p><ul class="rows">{% for item in report.aporias %}<li><span>{{ item.claim_text }}<div class="meta">{{ item.failure_code }}{% if item.failure_detail %} &middot; {{ item.failure_detail }}{% endif %}</div></span></li>{% else %}<li class="empty">None in this run.</li>{% endfor %}</ul></div><div class="panel"><div class="ph"><h2>Model selections</h2><span class="note">interpretation &middot; never badged</span></div><ul class="rows">{% for item in report.selections %}<li><span class="tag s">PICK</span><span>{{ item.rationale }}<div class="meta">{{ item.edge_id }} &middot; ATT&amp;CK {{ item.attack_technique_id or "not supplied" }}</div></span></li>{% else %}<li class="empty">The model selected nothing in this run.</li>{% endfor %}</ul></div><div class="panel"><div class="ph"><h2>Proven by code</h2><span class="note">independent of the model</span></div><ul class="rows">{% for edge in report.verified_edges %}<li><span class="tag v">{{ edge.badge }}</span><span>{{ edge.claim_text }}</span></li>{% else %}<li class="empty">No verified edges.</li>{% endfor %}</ul></div></main></body></html>')
+
+
+# The three views the detail page opens with, in the order a reviewer reads them:
+# the four headline numbers, then how the log narrowed to them, then when it
+# happened. All three are pure CSS and markup - the CSP forbids script outright,
+# so every bar width and marker position arrives already computed by report.py.
+
+_EXEC_STRIP = """<div class="exec">{% for cell in report.executive.cells %}<div class="c {{ cell.tone }}">
+<span class="k">{{ cell.key }}</span><span class="v">{{ cell.value }}</span><span class="n">{{ cell.note }}</span>
+</div>{% endfor %}</div>
+{% if not report.executive.scored %}<p class="withheld"><b>WITHHELD</b>{{ report.executive.reason }}</p>{% endif %}"""
+
+_FUNNEL = """<p class="lab">HOW THE LOG NARROWED</p><div class="panel"><div class="ph"><h2>Funnel</h2>
+<span class="note">bar length is square-root scaled &middot; the counts are exact</span></div>
+<div class="funnel">{% for stage in report.funnel %}<div class="fr s-{{ stage.key }}">
+<span class="fl">{{ stage.label }}</span>
+<span class="fb"><i style="width:{{ stage.bar_width|round(2) }}%"></i></span>
+<span class="fv">{{ stage.value }}</span>
+<p class="fn">{{ stage.note }}</p>
+{% if not loop.first %}<p class="drop">&darr; kept {{ (stage.share_of_previous * 100)|round(1) }}% of the stage above</p>{% endif %}
+</div>{% endfor %}</div>
+<div class="beside"><span class="bv">{{ report.aporias|length }}</span>
+<span class="bt"><b>Aporia sits beside this funnel, not inside it.</b> These are relations the
+verifier refused to decide &mdash; they did not survive the stages above, they were never
+eligible for them. Drawing them as a sixth bar would imply otherwise.</span></div></div>"""
+
+_TIMELINE = """<p class="lab">WHEN IT HAPPENED</p><div class="panel"><div class="ph"><h2>Timeline</h2>
+<span class="note">{{ report.timeline|length }} verified relations &middot; ordered by event time</span></div>
+{% if report.timeline %}<div class="tl"><div class="tlrail">
+{% for entry in report.timeline %}<span class="pt{% if entry.attack_relevant %} hit{% endif %}{% if entry.relation_type == 'PROCESS_OPENED_CONNECTION' %} conn{% endif %}" style="left:{{ entry.offset }}%"></span>{% endfor %}
+</div><div class="tlends"><span>{{ report.timeline[0].occurred_at or 'start of log' }}</span>
+<span>{{ report.timeline[-1].occurred_at or 'end of log' }}</span></div></div>
+<div class="tllegend"><span><i></i>verified relation</span><span><i class="conn"></i>network connection</span>
+<span><i class="hit"></i>selected as attack-relevant</span></div>
+<ul class="tlist">{% for entry in report.timeline %}<li{% if entry.attack_relevant %} class="hit"{% endif %}>
+<span class="ts">{{ entry.occurred_at or 'no timestamp' }}</span><span class="mk"></span>
+<span><span class="fl2">{{ entry.source_label }}</span><span class="arrow2">&rarr;</span>{{ entry.target_label }}
+{% if entry.attack_relevant %}<b class="pick">ATTACK-RELEVANT</b>{% endif %}
+<div class="meta">{{ entry.relation_type }}</div></span></li>{% endfor %}</ul>
+{% else %}<p class="lead" style="padding:1.1rem">No verified relations carried timing information for this run.</p>{% endif %}
+</div>"""
+
+# The detail page carries its own copy of the top bar, from before there was a
+# shared one. Brought onto the same branded header rather than left as the only
+# page in the tool without a logo.
+_DETAIL = _DETAIL.replace(
+    '<span class="brand">A<em>R</em>ES</span>',
+    '<a class="brand" href="/">' + _LOGO + '<span>A<em>R</em>ES</span></a>', 1)
+
+# Spliced rather than written inline: _DETAIL is one long single-line literal, and
+# editing multi-line blocks into it is how that literal gets broken.
+_DETAIL = _DETAIL.replace(
+    '<p class="sub">{{ report.run_id }}</p>',
+    '<p class="sub">{{ report.run_id }}</p>' + _EXEC_STRIP, 1)
+_DETAIL = _DETAIL.replace(
+    '<div class="panel"><div class="stats">',
+    _FUNNEL + _TIMELINE + '<div class="panel"><div class="stats">', 1)
 
 
 def allowed_host(host, port):
@@ -485,10 +551,18 @@ def _is_id(value):
     return bool(value) and all(character.isalnum() or character in ":_-" for character in value)
 
 
-def make_server(db_path, port=8420, workdir=None):
-    return ThreadingHTTPServer(("127.0.0.1", port), make_handler(db_path, workdir))
+# 127.0.0.1 everywhere except inside a container, where it would make the server
+# unreachable from the host. The container publishes to the host's loopback only
+# (see docker-compose.yml), so the trust boundary is unchanged - it moves from
+# the process to the port mapping. Host-header validation still applies either
+# way, so binding wider does not widen what the server will answer.
+DEFAULT_BIND = os.environ.get("ARES_BIND", "127.0.0.1")
 
 
-def serve(db_path, port=8420, workdir=None):
-    server = make_server(db_path, port, workdir)
+def make_server(db_path, port=8420, workdir=None, bind=None):
+    return ThreadingHTTPServer((bind or DEFAULT_BIND, port), make_handler(db_path, workdir))
+
+
+def serve(db_path, port=8420, workdir=None, bind=None):
+    server = make_server(db_path, port, workdir, bind)
     server.serve_forever()
