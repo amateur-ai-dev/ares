@@ -70,6 +70,9 @@ class VerifiedEdge:
 @dataclass(frozen=True)
 class RunCounts:
     dataset_mode: str = "eval"
+    run_id: str = ""
+    events_parsed: int = 0
+    events_in_scope: int = 0
     edges_enumerated: int = 0
     edges_verified: int = 0
     verified_edges_shown: int = 0
@@ -417,6 +420,9 @@ def run_incident(
     verified = [item.edge for item in persisted if item.outcome == "true"]
     counts = RunCounts(
         dataset_mode=inferred_mode,
+        run_id=run_id,
+        events_parsed=len(all_events),
+        events_in_scope=len(events),
         edges_enumerated=len(enumerated),
         edges_verified=len(verified),
         refuted=sum(item.outcome == "false" for item in persisted),

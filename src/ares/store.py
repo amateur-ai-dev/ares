@@ -86,6 +86,28 @@ def initialize(connection):
             UNIQUE (run_id, edge_id)
         );
 
+        CREATE TABLE IF NOT EXISTS jobs (
+            job_id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            label TEXT NOT NULL,
+            source_name TEXT NOT NULL,
+            source_sha256 TEXT NOT NULL,
+            source_bytes INTEGER NOT NULL,
+            arm TEXT NOT NULL,
+            model TEXT,
+            top_n INTEGER NOT NULL,
+            batch_size INTEGER,
+            dataset_mode TEXT NOT NULL,
+            status TEXT NOT NULL,
+            error TEXT,
+            run_id TEXT,
+            metrics_json TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            started_at TEXT,
+            finished_at TEXT,
+            duration_ms INTEGER
+        );
+
         CREATE TRIGGER IF NOT EXISTS verifier_executions_immutable_update
         BEFORE UPDATE ON verifier_executions
         BEGIN
